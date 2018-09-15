@@ -1,0 +1,17 @@
+[package]
+name = "ecsvulk"
+version = "0.1.0"
+authors = ["Friz64 <friz64mc@gmail.com>"]
+
+[dependencies]
+vulkano = "0.10.0"
+vulkano-win = "0.10.0"
+vulkano-shader-derive = "0.10.0"
+winit = "0.17.2"
+cgmath = "0.16.1"
+specs = "0.12"
+chrono = "0.4.0"
+toml = "0.4.6"
+serde = "1.0.75"
+serde_derive = "1.0.75"
+rayon = "1.0.2"

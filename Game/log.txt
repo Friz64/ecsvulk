@@ -1,0 +1,6 @@
+[15.09.2018 04:33:01] - INFO: [Logger] Logger initialized
+[15.09.2018 04:33:01] - INFO: [Config] Config initialized
+[15.09.2018 04:33:02] - INFO: [Renderer] Renderer initialized
+[15.09.2018 04:33:02] - WARNING: [Debug] This is a debug build, beware of any bugs or issues
+[15.09.2018 04:33:02] - INFO: [Welcome] Game 0.1.0 - Made by Friz64
+Exiting...
