@@ -18,112 +18,40 @@ use ::vulkano_win::{
 use ::vulkano::{
     instance::{self, debug::{DebugCallback, MessageTypes}, Instance, InstanceCreationError, ApplicationInfo, PhysicalDevice, Features},
     device::{Device, Queue, DeviceExtensions},
-    swapchain::{Surface, CapabilitiesError, Swapchain, SwapchainCreationError, CompositeAlpha, ColorSpace, PresentMode},
+    swapchain::{self, Surface, CapabilitiesError, Swapchain, SwapchainCreationError, CompositeAlpha, ColorSpace, PresentMode, AcquireError, SurfaceTransform},
     image::{swapchain::SwapchainImage, ImageUsage, attachment::AttachmentImage, sys::ImageCreationError},
     sync::{self, SharingMode, GpuFuture},
     format::{Format, D16Unorm},
     framebuffer::{RenderPassAbstract, RenderPassCreationError, Subpass, Framebuffer, FramebufferAbstract, FramebufferCreationError},
-    pipeline::{GraphicsPipeline, viewport::Viewport},
+    pipeline::{GraphicsPipeline, GraphicsPipelineAbstract, viewport::Viewport},
     buffer::{cpu_access::CpuAccessibleBuffer, cpu_pool::CpuBufferPool, BufferAccess, BufferUsage},
     memory::{DeviceMemoryAllocError},
-    //command_buffer::{AutoCommandBuffer, AutoCommandBufferBuilder, DynamicState},
+    descriptor::{descriptor_set::{PersistentDescriptorSet, PersistentDescriptorSetBuildError}},
+    command_buffer::{AutoCommandBuffer, AutoCommandBufferBuilder, DynamicState, BeginRenderPassError},
 };
 use ::cgmath::{
-    Vector3,
+    self, Angle,
 };
 
-type Vec3 = Vector3<f32>;
-
-macro_rules! gen_pipeline_fn {
-    ($name:ident, $vert_src:expr, $frag_src:expr) => {
-        pub mod $name {
-            pub mod vs {
-                #[derive(VulkanoShader)]
-                #[ty = "vertex"]
-                #[path = $vert_src]
-                struct _Shdr; 
-            }
-            pub mod fs {
-                #[derive(VulkanoShader)]
-                #[ty = "fragment"]
-                #[path = $frag_src]
-                struct _Shdr;
-            }
-
-            use ::vulkano::buffer::cpu_pool::CpuBufferPool;
-            use ::vulkano::pipeline::GraphicsPipelineAbstract;
-            use ::std::sync::Arc;
-
-            pub struct Pipeline {
-                pub graphics: Arc<GraphicsPipelineAbstract + Send + Sync>,
-                pub cbp: CpuBufferPool<vs::ty::Data>,
-            }
-        }
-
-        pub fn $name(
-            logger: &mut Logger,
-            device: &Arc<Device>,
-            swap_chain_extent: [u32; 2],
-            render_pass: &Arc<RenderPassAbstract + Send + Sync>,
-        ) -> $name::Pipeline {
-            let vert = $name::vs::Shader::load(device.clone())
-                .unwrap_or_else(|err| logger.error("ShaderLoad", err));
-            let frag = $name::fs::Shader::load(device.clone())
-                .unwrap_or_else(|err| logger.error("ShaderLoad", err));
-
-            let dimensions = [swap_chain_extent[0] as f32, swap_chain_extent[1] as f32];
-            let viewport = Viewport {
-                origin: [0.0, 0.0],
-                dimensions,
-                depth_range: 0.0 .. 1.0,
-            };
-
-            let graphics = Arc::new(GraphicsPipeline::start()
-                .vertex_input_single_buffer::<Vertex>()
-                .vertex_shader(vert.main_entry_point(), ())
-                .triangle_list()
-                .primitive_restart(false)
-                .viewports(vec![viewport])
-                .fragment_shader(frag.main_entry_point(), ())
-                .depth_clamp(false)
-                .polygon_mode_fill()
-                .line_width(1.0)
-                .cull_mode_back()
-                .front_face_clockwise()
-                .blend_pass_through()
-                .render_pass(Subpass::from(render_pass.clone(), 0)
-                    .unwrap_or_else(|| logger.error("CreatePipeline", "Failed to create Subpass")))
-                .build(device.clone())
-                .unwrap_or_else(|err| logger.error("CreatePipeline", err))
-            );
-            
-            let cbp = CpuBufferPool::<$name::vs::ty::Data>::new(device.clone(), BufferUsage::all());
-
-            $name::Pipeline {
-                graphics,
-                cbp,
-            }
-        }
-    };
-}
-
-// heavily helped by https://github.com/bwasty/vulkan-tutorial-rs/blob/master/src/main.rs
+pub type Vec3 = cgmath::Vector3<f32>;
+pub type Point3 = cgmath::Point3<f32>;
+pub type Mat4 = cgmath::Matrix4<f32>;
 
 #[derive(Copy, Clone, Debug)]
-struct Vertex {
+pub struct Vertex {
     pos: [f32; 3],
-    color: [f32; 3],
+    normal: [f32; 3],
 }
 
 impl Vertex {
-    fn new(pos: Vector3<f32>, color: Vector3<f32>) -> Self {
+    pub fn new(pos: Vec3, normal: Vec3) -> Self {
         Self {
-            pos:   [pos.x,   pos.y,   pos.z  ],
-            color: [color.x, color.y, color.z],
+            pos:    pos.into(),
+            normal: normal.into(),
         }
     }
 }
-impl_vertex!(Vertex, pos, color);
+impl_vertex!(Vertex, pos, normal);
 
 // i think this goes over every queue family (thing that contains commands), checks if the queue family contains the wanted feature/command and saves its index
 #[derive(Debug)]
@@ -176,7 +104,7 @@ fn required_queue_families(
 mod pipelines {
     use super::*;
 
-    gen_pipeline_fn!(main, "shaders/main.vert", "shaders/main.frag");
+    gen_pipeline!(main, "shaders/main.vert", "shaders/main.frag");
 }
 
 pub struct Renderer {
@@ -185,7 +113,7 @@ pub struct Renderer {
     instance: Arc<Instance>,
     surface: Arc<Surface<Window>>,
 
-    physical_device: usize,
+    physical_device: usize, // lifetime issues
     device: Arc<Device>,
 
     graphics_queue: Arc<Queue>,
@@ -195,8 +123,10 @@ pub struct Renderer {
     swap_chain_images: Vec<Arc<SwapchainImage<Window>>>,
 
     render_pass: Arc<RenderPassAbstract + Send + Sync>,
+
     main_pipeline: pipelines::main::Pipeline,
 
+    depth_buffer: Arc<AttachmentImage<D16Unorm>>,
     swap_chain_framebuffers: Vec<Arc<FramebufferAbstract + Send + Sync>>,
 
     vertex_buffer: Arc<BufferAccess + Send + Sync>,
@@ -208,24 +138,24 @@ pub struct Renderer {
 }
 
 impl Renderer {
-    pub fn new(logger: &mut Logger, events_loop: &EventsLoop) -> Self {
+    pub fn new(logger: &mut Logger, events_loop: &EventsLoop) -> (Self, Option<DebugCallback>) {
         let required_device_extensions = DeviceExtensions {
             khr_swapchain: true,
             .. DeviceExtensions::none()
         };
 
         let instance = Self::instance(logger);
-        let _debug_callback = Self::callback(&instance);
+        let debug_callback = Self::callback(&instance);
 
         let surface = Self::surface(logger, events_loop, &instance);
 
         let physical_device = Self::physical_device(logger, &instance, &surface, &required_device_extensions);
         let (device, graphics_queue, present_queue) = Self::logical_device(logger, &instance, &surface, &required_device_extensions, physical_device);
 
-        let (swap_chain, swap_chain_images) = Self::swap_chain(logger, &instance, &surface, physical_device, &device, &graphics_queue, &present_queue, None);
+        let (swap_chain, swap_chain_images) = Self::swap_chain(logger, &instance, &surface, physical_device, &device, &graphics_queue, &present_queue);
 
         let render_pass = Self::render_pass(logger, &device, swap_chain.format());
-        let main_pipeline = pipelines::main(logger, &device, swap_chain.dimensions(), &render_pass);
+        let main_pipeline = Self::pipelines(logger, &device, swap_chain.dimensions(), &render_pass);
 
         let depth_buffer = Self::depth_buffer(logger, &device, swap_chain.dimensions());
         let swap_chain_framebuffers = Self::framebuffers(logger, &swap_chain_images, &render_pass, &depth_buffer);
@@ -238,7 +168,7 @@ impl Renderer {
 
         logger.info("Renderer", "Renderer initialized");
 
-        Renderer {
+        (Renderer {
             focused: true,
 
             instance,
@@ -254,8 +184,10 @@ impl Renderer {
             swap_chain_images,
 
             render_pass,
+
             main_pipeline,
 
+            depth_buffer,
             swap_chain_framebuffers,
 
             vertex_buffer,
@@ -264,7 +196,7 @@ impl Renderer {
 
             prev_frame_end,
             recreate_swap_chain: false,
-        }
+        }, debug_callback)
     }
 
     fn instance(logger: &mut Logger) -> Arc<Instance> {
@@ -307,7 +239,7 @@ impl Renderer {
 
         DebugCallback::new(&instance, types, |msg| {
             println!("{}", LogType::WARNING.gen_msg(msg.layer_prefix, msg.description));
-        }).ok() // ignore "extension not enabled" because we took care of that
+        }).ok()
     }
 
     fn surface(
@@ -346,7 +278,7 @@ impl Renderer {
                             _ => logger.error("SurfaceCapabilities", err),
                         });
                     
-                    !capabilities.supported_formats.is_empty() && // at least one format supported
+                    !capabilities.supported_formats.is_empty() &&       // at least one format supported
                     !capabilities.present_modes.iter().next().is_none() // at least one present mode supported
                 } else { false };
                 
@@ -389,6 +321,34 @@ impl Renderer {
         (device, graphics_queue, present_queue)
     }
 
+    fn dimensions(logger: &mut Logger, instance: &Arc<Instance>, surface: &Arc<Surface<Window>>, physical_device_index: usize) -> [u32; 2] {
+        let physical_device = PhysicalDevice::from_index(instance, physical_device_index)
+            .unwrap_or_else(|| logger.error("ReconstructPhysical", "Failed to reconstruct physical device from earlier obtained index"));
+        let capabilities = surface.capabilities(physical_device)
+            .unwrap_or_else(|err| match err {
+                CapabilitiesError::OomError(err) => logger.error("SurfaceCapabilities", err),
+                _ => logger.error("SurfaceCapabilities", err),
+            });
+        
+        if let Some(current_extent) = capabilities.current_extent {
+            // we got the current extent, use it
+            current_extent
+        } else {
+            // get the current window size, we dont want a constant resolution
+            let mut extent: (u32, u32) = (*surface).window().get_inner_size()
+                .unwrap_or_else(|| logger.error("GetWindowSize", "Failed to get the current window dimensions"))
+                .into();
+
+            // make sure the extent is supported
+            extent.0 = capabilities.min_image_extent[0]
+                .max(capabilities.max_image_extent[0].min(extent.0));
+            extent.1 = capabilities.min_image_extent[1]
+                .max(capabilities.max_image_extent[1].min(extent.1));
+
+            [extent.0, extent.1]
+        }
+    }
+
     fn swap_chain(
         logger: &mut Logger,
         instance: &Arc<Instance>,
@@ -397,7 +357,6 @@ impl Renderer {
         device: &Arc<Device>,
         graphics_queue: &Arc<Queue>,
         present_queue: &Arc<Queue>,
-        old_swapchain: Option<Arc<Swapchain<Window>>>,
     ) -> (Arc<Swapchain<Window>>, Vec<Arc<SwapchainImage<Window>>>) {
         let physical_device = PhysicalDevice::from_index(instance, physical_device_index)
             .unwrap_or_else(|| logger.error("ReconstructPhysical", "Failed to reconstruct physical device from earlier obtained index"));
@@ -407,14 +366,16 @@ impl Renderer {
                 _ => logger.error("SurfaceCapabilities", err),
             });
 
+        // TODO: temp test
         let surface_format = {
-            capabilities.supported_formats.iter()
+            /*capabilities.supported_formats.iter()
             // we try to find our preferred format
             .find(|(format, color_space)|
                 *format == Format::B8G8R8A8Unorm && *color_space == ColorSpace::SrgbNonLinear
             )
             // if that fails, we just use the first supported format
-            .unwrap_or_else(|| &capabilities.supported_formats[0])
+            .unwrap_or(&capabilities.supported_formats[0])*/
+            capabilities.supported_formats[0]
         };
 
         let present_mode = { // https://docs.rs/vulkano/0.10.0/vulkano/swapchain/enum.PresentMode.html
@@ -428,23 +389,7 @@ impl Renderer {
             }
         };
 
-        let dimensions = if let Some(current_extent) = capabilities.current_extent {
-            // we got the current extent, use it
-            current_extent
-        } else {
-            // get the current window size, we dont want a constant resolution
-            let mut extent: (u32, u32) = (**surface).window().get_inner_size()
-                .unwrap_or_else(|| logger.error("GetWindowSize", "Failed to get the current window dimensions"))
-                .into();
-
-            // make sure the extent is supported
-            extent.0 = capabilities.min_image_extent[0]
-                .max(capabilities.max_image_extent[0].min(extent.0));
-            extent.1 = capabilities.min_image_extent[1]
-                .max(capabilities.max_image_extent[1].min(extent.1));
-
-            [extent.0, extent.1]
-        };
+        let dimensions = Self::dimensions(logger, instance, surface, physical_device_index);
 
         let image_count = {
             let mut count = capabilities.min_image_count + 1;
@@ -457,7 +402,7 @@ impl Renderer {
 
         let image_usage = ImageUsage {
             color_attachment: true,
-            .. ImageUsage::none()
+            .. capabilities.supported_usage_flags
         };
 
         let sharing_mode: SharingMode = { // https://docs.rs/vulkano/0.10.0/vulkano/sync/enum.SharingMode.html
@@ -497,7 +442,7 @@ impl Renderer {
             // Clip the parts of the buffer which aren't visible.
             true,
             // Previous swapchain.
-            old_swapchain.as_ref()
+            None,
         ).unwrap_or_else(|err| match err {
             SwapchainCreationError::OomError(err) => logger.error("CreateSwapchain", err),
             _ => logger.error("CreateSwapchain", err),
@@ -532,6 +477,17 @@ impl Renderer {
             RenderPassCreationError::OomError(err) => logger.error("CreateRenderPass", err),
             _ => logger.error("CreateRenderPass", err),
         }))
+    }
+
+    fn pipelines(
+        logger: &mut Logger,
+        device: &Arc<Device>,
+        swap_chain_extent: [u32; 2],
+        render_pass: &Arc<RenderPassAbstract + Send + Sync>,
+    ) -> (pipelines::main::Pipeline) {
+        //(
+            pipelines::main::Pipeline::new(logger, &device, swap_chain_extent, &render_pass)//,
+        //)
     }
 
     fn depth_buffer(
@@ -615,7 +571,48 @@ impl Renderer {
             })
     }
 
-    pub fn draw(&mut self, logger: &mut Logger) {
-        // aaaaaaaaaa
+    fn recreate_swap_chain(&mut self, logger: &mut Logger) -> bool {
+        let dimensions = Self::dimensions(logger, &self.instance, &self.surface, self.physical_device);
+
+        let (swap_chain, swap_chain_images) = match self.swap_chain.recreate_with_dimension(dimensions) {
+            Ok(r) => r,
+            Err(SwapchainCreationError::OomError(err)) => logger.error("CreateSwapchain", err),
+            Err(SwapchainCreationError::UnsupportedDimensions) => return true,
+            Err(err) => logger.error("CreateSwapchain", err),
+        };
+        self.swap_chain = swap_chain;
+        self.swap_chain_images = swap_chain_images;
+
+        self.render_pass = Self::render_pass(logger, &self.device, self.swap_chain.format());
+        self.main_pipeline = Self::pipelines(logger, &self.device, self.swap_chain.dimensions(), &self.render_pass);
+
+        self.depth_buffer = Self::depth_buffer(logger, &self.device, self.swap_chain.dimensions());
+        self.swap_chain_framebuffers = Self::framebuffers(logger, &self.swap_chain_images, &self.render_pass, &self.depth_buffer);
+
+        self.recreate_swap_chain = false;
+
+        false
     }
+
+    pub fn draw(&mut self, logger: &mut Logger, /*objects: Vec<Vec<Vertex>>*/) -> bool {
+        if let Some(ref mut prev_frame) = self.prev_frame_end {
+            prev_frame.cleanup_finished();
+        }
+
+        if self.recreate_swap_chain {
+            if self.recreate_swap_chain(logger) { return true; }
+        };
+
+        let (image_index, acquire_future) = match swapchain::acquire_next_image(self.swap_chain.clone(), None) {
+            Ok(r) => r,
+            Err(AcquireError::OutOfDate) => {
+                self.recreate_swap_chain = true;
+                return true;
+            },
+            Err(err) => logger.error("AcquireNextImage", err),
+        };
+
+        // drawing didn't fail
+        false
+    }   
 }

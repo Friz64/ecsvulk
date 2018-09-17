@@ -204,12 +204,12 @@ impl Config {
         let reconstructed = OptionConfig {
             controls: Some(OptionConfigControls {
                 movement: Some(OptionConfigControlsMovement {
-                    forwards: Some(self.controls.movement.forwards.to_uppercase()),
-                    backwards: Some(self.controls.movement.backwards.to_uppercase()),
-                    left: Some(self.controls.movement.left.to_uppercase()),
-                    right: Some(self.controls.movement.right.to_uppercase()),
-                    speed_up: Some(self.controls.movement.speed_up.to_uppercase()),
-                    speed_down: Some(self.controls.movement.speed_down.to_uppercase()),
+                    forwards: Some(self.controls.movement.forwards.to_string()),
+                    backwards: Some(self.controls.movement.backwards.to_string()),
+                    left: Some(self.controls.movement.left.to_string()),
+                    right: Some(self.controls.movement.right.to_string()),
+                    speed_up: Some(self.controls.movement.speed_up.to_string()),
+                    speed_down: Some(self.controls.movement.speed_down.to_string()),
                 }),
                 sensitivity: Some(OptionConfigControlsSensitivity {
                     mouse_speed: Some(self.controls.sensitivity.mouse_speed),

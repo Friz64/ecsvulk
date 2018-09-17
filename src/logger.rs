@@ -32,7 +32,7 @@ impl Logger {
         let path = format!("./{}/{}", ::NAME, logpath);
         let file = File::create(&path)
             .map_err(|err| {
-                println!("{}", LogType::WARNING.gen_msg("LogFileCreate", err.to_string() + " - NOT WRITING LOG TO FILE"))
+                eprintln!("{}", LogType::WARNING.gen_msg("LogFileCreate", err.to_string() + " - NOT WRITING LOG TO FILE"))
             }).ok();
 
         let mut logger = Logger {
@@ -50,7 +50,7 @@ impl Logger {
         if let Some(file) = &mut self.file {
             file.write(format!("{}\n", err_msg).as_bytes())
                 .map_err(|err| {
-                    println!("{}", ::LogType::WARNING.gen_msg("LogFileWrite", err))
+                    eprintln!("{}", ::LogType::WARNING.gen_msg("LogFileWrite", err))
                 }).ok();;
         }
         

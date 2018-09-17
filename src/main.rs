@@ -10,18 +10,21 @@ extern crate vulkano;
 extern crate vulkano_shader_derive;
 extern crate rayon;
 extern crate cgmath;
+extern crate obj;
 
 #[macro_use]
 mod helper;
 mod logger;
 mod config;
 mod keycode;
-mod renderer;
+mod graphics;
+mod obj_loader;
 
 use helper::*;
 use logger::*;
 use config::*;
-use renderer::*;
+use graphics::renderer::*;
+use obj_loader::*;
 
 use winit::{
     Event, WindowEvent, DeviceEvent, KeyboardInput, MouseScrollDelta,
@@ -46,6 +49,7 @@ const VERSION: Version = Version {
 };
 
 fn main() {
+    assert!(true);
     init();
     let mut logger = Logger::new("log.txt");
     //                                  V - TEMPORARY
@@ -54,14 +58,8 @@ fn main() {
         .unwrap_or_else(|err| logger.error("PoolCreate", err));
     let mut config = Config::new(&mut logger, "config.toml");
     let mut events_loop = winit::EventsLoop::new();
+    let (mut renderer, _debug_callback) = Renderer::new(&mut logger, &events_loop);
     
-    let cur = std::time::Instant::now();
-
-    let mut renderer = Renderer::new(&mut logger, &events_loop);
-
-    let dur = std::time::Instant::now().duration_since(cur);
-    println!("it took {}.{}s to initialize the renderer", dur.as_secs(), dur.subsec_millis());
-
     if DEBUG {logger.warning("Debug", "This is a debug build, beware of any bugs or issues")}
     logger.info("Welcome", format!("{} {} - Made by Friz64", NAME, VERSION));
 
@@ -99,7 +97,9 @@ fn main() {
             config.update_scroll(0.0);
         });
 
-        pool.install(|| renderer.draw(&mut logger));
+        if pool.install(|| {
+            renderer.draw(&mut logger)
+        }) { continue; };
     };
 
     exit(&mut logger, 0);
