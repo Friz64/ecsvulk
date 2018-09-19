@@ -1,20 +1,20 @@
 use logger::Logger;
-use obj::{Obj, SimplePolygon};
-use std::path::Path;
-use graphics::renderer::Vertex;
+use obj;
+use std::{
+    io::BufReader,
+    fs::File,
+};
+use graphics::renderer::{
+    Vertex,
+};
 use ::graphics::renderer::Vec3;
 
-fn load(logger: &mut Logger, path: &str) -> Vec<Vertex> {
-    let obj = match Obj::<SimplePolygon>::load(Path::new(path)) {
-        Ok(res) => res,
-        Err(err) => {
-            logger.warning("LoadObj", format!("IGNORING {}: {}", path, err));
-            return vec![];
-        },
-    };
-    
-    obj.position.iter()
-        .zip(obj.normal.iter())
-        .map(|(pos, normal)| Vertex::new(Vec3::from(*pos), Vec3::from(*normal)))
-        .collect()
-}
+/*
+pub fn load(logger: &mut Logger, name: &str) -> (Vec<Vertex>, Vec<Normal>, Vec<u16>) {
+    let path = format!("./{}/models/{}.obj", ::NAME, name);
+
+    let input = BufReader::new(File::open(path).unwrap());
+    let obj = obj::load_obj(input).unwrap();
+
+    output
+}*/

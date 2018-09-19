@@ -52,9 +52,7 @@ fn main() {
     assert!(true);
     init();
     let mut logger = Logger::new("log.txt");
-    //                                  V - TEMPORARY
-    let pool = ThreadPoolBuilder::new().num_threads(1)
-        .build()
+    let pool = ThreadPoolBuilder::new().build()
         .unwrap_or_else(|err| logger.error("PoolCreate", err));
     let mut config = Config::new(&mut logger, "config.toml");
     let mut events_loop = winit::EventsLoop::new();
@@ -98,7 +96,7 @@ fn main() {
         });
 
         if pool.install(|| {
-            renderer.draw(&mut logger)
+            renderer.draw(&mut logger, &pool)
         }) { continue; };
     };
 
