@@ -1,4 +1,4 @@
-use chrono::{DateTime, Datelike, Local, Timelike};
+use chrono::{DateTime, Local, Timelike};
 use std::fs::File;
 use std::fmt;
 use std::io::Write;
@@ -85,12 +85,10 @@ impl Logger {
 }
 
 fn format_time(time: DateTime<Local>) -> String {
-    format!("{:02}.{:02}.{:04} {:02}:{:02}:{:02}",
-        time.day(),
-        time.month(),
-        time.year(),
+    format!("{:02}:{:02}:{:02}.{:03}",
         time.hour(),
         time.minute(),
         time.second(),
+        time.nanosecond() / 1_000_000, // reduce to 3 chars
     )
 }

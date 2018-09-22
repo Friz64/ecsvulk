@@ -11,6 +11,7 @@ extern crate vulkano_shader_derive;
 extern crate rayon;
 extern crate cgmath;
 extern crate obj;
+extern crate specs;
 
 #[macro_use]
 mod helper;
@@ -18,19 +19,21 @@ mod logger;
 mod config;
 mod keycode;
 mod graphics;
-mod obj_loader;
+mod ecs;
+mod objects;
 
 use helper::*;
 use logger::*;
 use config::*;
 use graphics::renderer::*;
-use obj_loader::*;
+use objects::*;
+use ecs::components::Model;
 
 use winit::{
     Event, WindowEvent, DeviceEvent, KeyboardInput, MouseScrollDelta,
 };
 use vulkano::{
-    instance::Version
+    instance::Version,
 };
 use rayon::{
     ThreadPoolBuilder,
@@ -49,7 +52,9 @@ const VERSION: Version = Version {
 };
 
 fn main() {
+    // comment and uncomment to recompile shaders
     assert!(true);
+
     init();
     let mut logger = Logger::new("log.txt");
     let pool = ThreadPoolBuilder::new().build()
@@ -60,6 +65,8 @@ fn main() {
     
     if DEBUG {logger.warning("Debug", "This is a debug build, beware of any bugs or issues")}
     logger.info("Welcome", format!("{} {} - Made by Friz64", NAME, VERSION));
+
+    let objects = Objects::load(&mut logger, &renderer.queue);
 
     let mut running = true;
     while running {
@@ -96,7 +103,7 @@ fn main() {
         });
 
         if pool.install(|| {
-            renderer.draw(&mut logger, &pool)
+            renderer.draw(&mut logger, &pool, &objects.teapot)
         }) { continue; };
     };
 

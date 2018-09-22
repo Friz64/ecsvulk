@@ -32,8 +32,14 @@ macro_rules! gen_pipeline {
                     let frag = $name::fs::Shader::load(device.clone())
                         .unwrap_or_else(|err| logger.error("ShaderLoad", err));
 
-                    let pipeline = Arc::new(GraphicsPipeline::start()
-                        .vertex_input_single_buffer::<Vertex>()
+                    let pipeline: Arc<
+                        GraphicsPipeline<
+                            TwoBuffersDefinition<Vertex, Normal>,
+                            Box<dyn PipelineLayoutAbstract + marker::Sync + marker::Send>,
+                            Arc<dyn RenderPassAbstract + marker::Sync + marker::Send>
+                        >
+                    > = Arc::new(GraphicsPipeline::start()
+                        .vertex_input(TwoBuffersDefinition::new())
                         .vertex_shader(vert.main_entry_point(), ())
                         .triangle_list()
                         .viewports_dynamic_scissors_irrelevant(1)
@@ -42,13 +48,13 @@ macro_rules! gen_pipeline {
                         .render_pass(Subpass::from(render_pass.clone(), 0)
                             .unwrap_or_else(|| logger.error("CreatePipeline", "Failed to create Subpass")))
                         .build(device.clone())
-                            .unwrap_or_else(|err| logger.error("CreatePipeline", err))
+                            .unwrap_or_else(|err| logger.error(&("CreatePipeline_".to_owned() + stringify!($name)), err))
                     );
                     
                     let cbp = CpuBufferPool::new(device.clone(), BufferUsage::all());
 
                     $name::Pipeline {
-                        pipeline,
+                        pipeline: pipeline,
                         cbp,
                     }
                 }

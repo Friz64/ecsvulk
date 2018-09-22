@@ -1,9 +1,13 @@
 use std::{
     sync::Arc,
     boxed::Box,
+    marker,
 };
 use logger::{
     Logger, LogType,
+};
+use ecs::{
+    components::{Model},
 };
 use ::winit::{
     WindowBuilder, EventsLoop, Window,
@@ -19,10 +23,10 @@ use ::vulkano::{
     sync::{self, SharingMode, GpuFuture, FlushError},
     format::{Format, D16Unorm},
     framebuffer::{RenderPassAbstract, RenderPassCreationError, Subpass, Framebuffer, FramebufferAbstract, FramebufferCreationError},
-    pipeline::{GraphicsPipeline, GraphicsPipelineAbstract, viewport::Viewport},
+    pipeline::{GraphicsPipeline, GraphicsPipelineAbstract, viewport::Viewport, vertex::TwoBuffersDefinition},
     buffer::{immutable::ImmutableBuffer, cpu_pool::CpuBufferPool, BufferAccess, BufferUsage, TypedBufferAccess},
     memory::{DeviceMemoryAllocError},
-    //descriptor::{descriptor_set::{PersistentDescriptorSet, PersistentDescriptorSetBuildError}},
+    descriptor::{PipelineLayoutAbstract, descriptor_set::{PersistentDescriptorSet, PersistentDescriptorSetBuildError}},
     command_buffer::{AutoCommandBufferBuilder, DynamicState, BeginRenderPassError, BuildError},
 };
 use ::cgmath::{
@@ -38,19 +42,15 @@ pub type Mat4 = cgmath::Matrix4<f32>;
 
 #[derive(Copy, Clone, Debug)]
 pub struct Vertex {
-    pos: [f32; 3],
-    normal: [f32; 3],
+    pub pos: [f32; 3],
 }
+impl_vertex!(Vertex, pos);
 
-impl Vertex {
-    pub fn new(pos: Vec3, normal: Vec3) -> Self {
-        Self {
-            pos: pos.into(),
-            normal: normal.into(),
-        }
-    }
+#[derive(Copy, Clone, Debug)]
+pub struct Normal {
+    pub normal: [f32; 3],
 }
-impl_vertex!(Vertex, pos, normal);
+impl_vertex!(Normal, normal);
 
 // the cleanest way i found of implementing this
 mod pipelines {
@@ -68,7 +68,7 @@ pub struct Renderer {
     physical_device: usize, // lifetime issues
     device: Arc<Device>,
 
-    queue: Arc<Queue>,
+    pub queue: Arc<Queue>,
 
     swap_chain: Arc<Swapchain<Window>>,
     swap_chain_images: Vec<Arc<SwapchainImage<Window>>>,
@@ -469,10 +469,10 @@ impl Renderer {
         ).collect::<Vec<_>>()
     }
 
-    fn vertex_buffer(&self, logger: &mut Logger, vertices: &Vec<Vertex>) -> Arc<BufferAccess + Send + Sync> {
+    pub fn vertex_buffer(logger: &mut Logger, queue: &Arc<Queue>, vertices: &Vec<Vertex>) -> Arc<BufferAccess + Send + Sync> {
         let (buffer, future) = ImmutableBuffer::from_iter(
             vertices.iter().cloned(), BufferUsage::vertex_buffer(), 
-            self.queue.clone())
+            queue.clone())
             .unwrap_or_else(|err| match err {
                 DeviceMemoryAllocError::OomError(err) => logger.error("CreateVertexBuffer", err),
                 _ => logger.error("CreateVertexBuffer", err),
@@ -481,10 +481,10 @@ impl Renderer {
         buffer
     }
 
-    fn normals_buffer(&self, logger: &mut Logger, normals: &Vec<Vertex>) -> Arc<BufferAccess + Send + Sync> {
+    pub fn normals_buffer(logger: &mut Logger, queue: &Arc<Queue>, normals: &Vec<Normal>) -> Arc<BufferAccess + Send + Sync> {
         let (buffer, future) = ImmutableBuffer::from_iter(
             normals.iter().cloned(), BufferUsage::vertex_buffer(), 
-            self.queue.clone())
+            queue.clone())
             .unwrap_or_else(|err| match err {
                 DeviceMemoryAllocError::OomError(err) => logger.error("CreateNormalsBuffer", err),
                 _ => logger.error("CreateNormalsBuffer", err),
@@ -493,10 +493,10 @@ impl Renderer {
         buffer
     }
 
-    fn index_buffer(&self, logger: &mut Logger, indices: &Vec<u16>) -> Arc<TypedBufferAccess<Content=[u16]> + Send + Sync> {
+    pub fn index_buffer(logger: &mut Logger, queue: &Arc<Queue>, indices: &Vec<u16>) -> Arc<TypedBufferAccess<Content=[u16]> + Send + Sync> {
         let (buffer, future) = ImmutableBuffer::from_iter(
             indices.iter().cloned(), BufferUsage::index_buffer(), 
-            self.queue.clone())
+            queue.clone())
             .unwrap_or_else(|err| match err {
                 DeviceMemoryAllocError::OomError(err) => logger.error("CreateIndexBuffer", err),
                 _ => logger.error("CreateIndexBuffer", err),
@@ -562,13 +562,13 @@ impl Renderer {
             ),
             Mat4::look_at_dir(   // view
                 pos,                    // position
-                front,                  // pitch yaw stuff
+                front,                  // pitch yaw
                 (0.0, 1.0, 0.0).into(), // up
             ),
         )
     }
 
-    pub fn draw(&mut self, logger: &mut Logger, pool: &ThreadPool) -> bool {
+    pub fn draw(&mut self, logger: &mut Logger, pool: &ThreadPool, model: &Model) -> bool {
         if pool.install(|| {
             if Self::dimensions(logger, &self.surface) == [0, 0] {
                 return true
@@ -604,8 +604,8 @@ impl Renderer {
         let (projection, view) = pool.install(|| {
             Self::pv_matrices(
                 self.swap_chain.dimensions(),
-                Point3::new(0.0, 0.0, 0.0),
-                0.0, 0.0,
+                Point3::new(-5.0, 3.5, 0.0),
+                -0.4, 0.0,
             )
         });
 
@@ -625,12 +625,10 @@ impl Renderer {
                     BeginRenderPassError::SyncCommandBufferBuilderError(err) => logger.error("BeginRenderPass", err),
                 });
 
-            /*
-
             let main_set = pool.install(|| {
                 Arc::new(PersistentDescriptorSet::start(self.main_pipeline.pipeline.clone(), 0)
                     .add_buffer(self.main_pipeline.cbp.next(pipelines::main::vs::ty::Data {
-                        world: Mat4::from_angle_y(cgmath::Rad(0.0)).into(),
+                        world: Mat4::from_angle_y(cgmath::Rad(45.0)).into(),
                         view: view.into(),
                         proj: projection.into(),
                     }).unwrap_or_else(|err| match err {
@@ -644,15 +642,19 @@ impl Renderer {
                 )
             });
 
-            command_buffer = command_buffer.draw_indexed(
-                self.main_pipeline.pipeline.clone(),
-                &self.dynamic_state,
-                [self.vertex_buffer(logger, vertex).clone(), self.normals_buffer(logger, normals).clone()].to_vec(),
-                self.index_buffer(logger, index).clone(),
-                main_set.clone(), ()
-            ).unwrap();
-
-            */
+            if let Some(ref vertex_buf) = model.vertex_buf {
+                if let Some(ref normals_buf) = model.normals_buf {
+                    if let Some(ref index_buf) = model.index_buf {
+                        command_buffer = command_buffer.draw_indexed(
+                            self.main_pipeline.pipeline.clone(),
+                            &self.dynamic_state,
+                            [vertex_buf.clone(), normals_buf.clone()].to_vec(),
+                            index_buf.clone(),
+                            main_set.clone(), ()
+                        ).unwrap();
+                    }
+                }
+            }
 
             command_buffer.end_render_pass()
                 .unwrap_or_else(|err| logger.error("EndRenderPass", err))
