@@ -27,7 +27,9 @@ use logger::*;
 use config::*;
 use graphics::renderer::*;
 use objects::*;
-use ecs::components::Model;
+use ecs::{
+    entities,
+};
 
 use winit::{
     Event, WindowEvent, DeviceEvent, KeyboardInput, MouseScrollDelta,
@@ -53,7 +55,7 @@ const VERSION: Version = Version {
 
 fn main() {
     // comment and uncomment to recompile shaders
-    assert!(true);
+    //assert!(true);
 
     init();
     let mut logger = Logger::new("log.txt");
@@ -62,11 +64,15 @@ fn main() {
     let mut config = Config::new(&mut logger, "config.toml");
     let mut events_loop = winit::EventsLoop::new();
     let (mut renderer, _debug_callback) = Renderer::new(&mut logger, &events_loop);
+    let objects = Objects::load(&mut logger, &renderer.queue);
+    let mut ecs = ecs::init();
+
+    for i in (0..360).step_by(10) {
+        entities::create_obj(&mut ecs, Object::teapot, Vec3::new(0.0, 0.0, 0.0), 0.0, i as f32, 0.0);
+    }
     
     if DEBUG {logger.warning("Debug", "This is a debug build, beware of any bugs or issues")}
     logger.info("Welcome", format!("{} {} - Made by Friz64", NAME, VERSION));
-
-    let objects = Objects::load(&mut logger, &renderer.queue);
 
     let mut running = true;
     while running {
@@ -89,7 +95,6 @@ fn main() {
                 },
                 _ => (),
             },
-            Event::Suspended(suspended) => println!("{}", suspended),
             _ => (),
         }));
         
@@ -97,13 +102,24 @@ fn main() {
         pool.install(|| {
             config.update_status();
 
-            // config updates go here
+            if config.controls.movement.forwards.down() {
+                println!("forwards down");
+            }
+            if config.controls.movement.backwards.down() {
+                println!("backwards down");
+            }
+            if config.controls.movement.left.down() {
+                println!("left down");
+            }
+            if config.controls.movement.right.down() {
+                println!("right down");
+            }
 
             config.update_scroll(0.0);
         });
 
         if pool.install(|| {
-            renderer.draw(&mut logger, &pool, &objects.teapot)
+            renderer.draw(&mut logger, &pool, &ecs, &objects)
         }) { continue; };
     };
 

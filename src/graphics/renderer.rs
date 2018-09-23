@@ -6,8 +6,11 @@ use std::{
 use logger::{
     Logger, LogType,
 };
+use objects::{
+    Objects, Object,
+};
 use ecs::{
-    components::{Model},
+    components::*,
 };
 use ::winit::{
     WindowBuilder, EventsLoop, Window,
@@ -34,6 +37,9 @@ use ::cgmath::{
 };
 use ::rayon::{
     ThreadPool,
+};
+use ::specs::{
+    World, Join,
 };
 
 pub type Vec3 = cgmath::Vector3<f32>;
@@ -100,12 +106,12 @@ impl Renderer {
         let surface = Self::surface(logger, events_loop, &instance);
 
         let (physical_device, queue_family) = Self::physical_device(logger, &instance, &surface, &required_device_extensions);
-        let (device, queue) =  Self::logical_device(logger, &instance, &surface, &required_device_extensions, physical_device, queue_family);
+        let (device, queue) =  Self::logical_device(logger, &instance, &required_device_extensions, physical_device, queue_family);
 
         let (swap_chain, swap_chain_images) = Self::swap_chain(logger, &instance, &surface, physical_device, &device, &queue);
 
         let render_pass = Self::render_pass(logger, &device, swap_chain.format());
-        let main_pipeline = Self::pipelines(logger, &device, swap_chain.dimensions(), &render_pass);
+        let main_pipeline = Self::pipelines(logger, &device, &render_pass);
 
         let depth_buffer = Self::depth_buffer(logger, &device, swap_chain.dimensions())
             .unwrap_or_else(|| logger.error("CreateDepthBuffer", "Invalid dimensions"));
@@ -195,7 +201,7 @@ impl Renderer {
         instance: &Arc<Instance>
     ) -> Arc<Surface<Window>> {
         WindowBuilder::new()
-            .with_title(::NAME)
+            .with_title(::NAME.to_owned() + " " + &::VERSION.to_string())
             .build_vk_surface(&events_loop, instance.clone())
             .unwrap_or_else(|err| match err {
                     CreationError::SurfaceCreationError(err) => logger.error("WindowCreate", err),
@@ -245,7 +251,6 @@ impl Renderer {
     fn logical_device(
         logger: &mut Logger,
         instance: &Arc<Instance>,
-        surface: &Arc<Surface<Window>>,
         required_extensions: &DeviceExtensions,
         physical_device_index: usize,
         queue_family: u32,
@@ -404,7 +409,6 @@ impl Renderer {
     fn pipelines(
         logger: &mut Logger,
         device: &Arc<Device>,
-        swap_chain_extent: [u32; 2],
         render_pass: &Arc<RenderPassAbstract + Send + Sync>,
     ) -> (pipelines::main::Pipeline) {
         //(
@@ -532,7 +536,7 @@ impl Renderer {
         self.swap_chain_images = swap_chain_images;
 
         self.render_pass = Self::render_pass(logger, &self.device, self.swap_chain.format());
-        self.main_pipeline = Self::pipelines(logger, &self.device, dimensions, &self.render_pass);
+        self.main_pipeline = Self::pipelines(logger, &self.device, &self.render_pass);
 
         self.depth_buffer = match Self::depth_buffer(logger, &self.device, dimensions) {
             Some(res) => res,
@@ -554,21 +558,33 @@ impl Renderer {
             cgmath::Rad(yaw).normalize().sin() * cgmath::Rad(pitch).normalize().cos(),
         );
 
-        (
+        let mut proj = {
             cgmath::perspective( // projection
                 cgmath::Rad(::std::f32::consts::FRAC_PI_2),  // fov
                 dimensions[0] as f32 / dimensions[1] as f32, // aspect ratio
                 0.01, 100.0,                                 // near and far plane
-            ),
+            )
+        };
+
+        proj.y.y *= -1.0;
+
+        let view = {
             Mat4::look_at_dir(   // view
                 pos,                    // position
                 front,                  // pitch yaw
                 (0.0, 1.0, 0.0).into(), // up
-            ),
-        )
+            )
+        };
+
+        (proj, view)
     }
 
-    pub fn draw(&mut self, logger: &mut Logger, pool: &ThreadPool, model: &Model) -> bool {
+    pub fn draw(&mut self, logger: &mut Logger, pool: &ThreadPool, world: &World, objects: &Objects) -> bool {
+        // it doesn't work if i put it outside this function
+        fn world_matrix(translation: Vec3, pitch: f32, yaw: f32, roll: f32) -> Mat4 {
+            Mat4::from_translation(translation) * Mat4::from_angle_x(cgmath::Deg(pitch)) * Mat4::from_angle_y(cgmath::Deg(yaw)) * Mat4::from_angle_z(cgmath::Deg(roll))
+        }
+
         if pool.install(|| {
             if Self::dimensions(logger, &self.surface) == [0, 0] {
                 return true
@@ -625,34 +641,36 @@ impl Renderer {
                     BeginRenderPassError::SyncCommandBufferBuilderError(err) => logger.error("BeginRenderPass", err),
                 });
 
-            let main_set = pool.install(|| {
-                Arc::new(PersistentDescriptorSet::start(self.main_pipeline.pipeline.clone(), 0)
-                    .add_buffer(self.main_pipeline.cbp.next(pipelines::main::vs::ty::Data {
-                        world: Mat4::from_angle_y(cgmath::Rad(45.0)).into(),
-                        view: view.into(),
-                        proj: projection.into(),
-                    }).unwrap_or_else(|err| match err {
-                        DeviceMemoryAllocError::OomError(err) => logger.error("BufferPoolNext", err),
-                        _ => logger.error("BufferPoolNext", err),
-                    })).unwrap_or_else(|err| logger.error("AddDescBuffer", err))
-                    .build().unwrap_or_else(|err| match err {
-                        PersistentDescriptorSetBuildError::OomError(err) => logger.error("CreateDescSet", err),
-                        _ => logger.error("CreateDescSet", err),
-                    })
-                )
-            });
+            let positions = world.read_storage::<Pos>();
+            let pitchyawroll = world.read_storage::<PitchYawRoll>();
+            let models = world.read_storage::<Model>();
 
-            if let Some(ref vertex_buf) = model.vertex_buf {
-                if let Some(ref normals_buf) = model.normals_buf {
-                    if let Some(ref index_buf) = model.index_buf {
-                        command_buffer = command_buffer.draw_indexed(
-                            self.main_pipeline.pipeline.clone(),
-                            &self.dynamic_state,
-                            [vertex_buf.clone(), normals_buf.clone()].to_vec(),
-                            index_buf.clone(),
-                            main_set.clone(), ()
-                        ).unwrap();
-                    }
+            for (pos, PitchYawRoll(pitch, yaw, roll), model) in (&positions, &pitchyawroll, &models).join() {
+                let main_set = pool.install(|| {
+                    Arc::new(PersistentDescriptorSet::start(self.main_pipeline.pipeline.clone(), 0)
+                        .add_buffer(self.main_pipeline.cbp.next(pipelines::main::vs::ty::Data {
+                                world: world_matrix(pos.0, *pitch, *yaw, *roll).into(),
+                                view: view.into(),
+                                proj: projection.into(),
+                            }).unwrap_or_else(|err| match err {
+                                DeviceMemoryAllocError::OomError(err) => logger.error("BufferPoolNext", err),
+                                _ => logger.error("BufferPoolNext", err),
+                            })).unwrap_or_else(|err| logger.error("AddDescBuffer", err))
+                        .build().unwrap_or_else(|err| match err {
+                            PersistentDescriptorSetBuildError::OomError(err) => logger.error("CreateDescSet", err),
+                            _ => logger.error("CreateDescSet", err),
+                        })
+                    )
+                });
+
+                if let Some((vertex_buf, normals_buf, index_buf)) = model.0.get_buffers(objects) {
+                    command_buffer = command_buffer.draw_indexed(
+                        self.main_pipeline.pipeline.clone(),
+                        &self.dynamic_state,
+                        [vertex_buf.clone(), normals_buf.clone()].to_vec(),
+                        index_buf.clone(),
+                        main_set.clone(), ()
+                    ).unwrap();
                 }
             }
 

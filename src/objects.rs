@@ -13,14 +13,20 @@ use graphics::renderer::{
 };
 use ::vulkano::{
     device::Queue,
+    buffer::{BufferAccess, TypedBufferAccess},
 };
+
+pub struct ModelBuffers {
+    vertex_buf: Option<Arc<BufferAccess + Send + Sync>>,
+    normals_buf: Option<Arc<BufferAccess + Send + Sync>>,
+    index_buf: Option<Arc<TypedBufferAccess<Content=[u16]> + Send + Sync>>,
+}
 
 macro_rules! gen_objects {
     ( $( $name:ident ),* ) => {
-        #[derive(Debug)]
         pub struct Objects {
             $(
-                pub $name: Model,
+                pub $name: ModelBuffers,
             )*
         }
 
@@ -33,16 +39,53 @@ macro_rules! gen_objects {
                 }
             }
         }
+
+        #[allow(non_camel_case_types)]
+        pub enum Object {
+            $(
+                $name,
+            )*
+            Custom(ModelBuffers)
+        }
+        
+        impl Object {
+            pub fn get_buffers(&self, objects: &Objects) -> Option<(
+                Arc<BufferAccess + Send + Sync>,
+                Arc<BufferAccess + Send + Sync>,
+                Arc<TypedBufferAccess<Content=[u16]> + Send + Sync>,
+            )> {
+                match self {
+                    $(
+                        Object::$name => {
+                            if let Some(ref vertex_buf) = objects.$name.vertex_buf {
+                                if let Some(ref normals_buf) = objects.$name.normals_buf {
+                                    if let Some(ref index_buf) = objects.$name.index_buf {
+                                        return Some((vertex_buf.clone(), normals_buf.clone(), index_buf.clone()));
+                                    }
+                                }
+                            }
+
+                            None
+                        },
+                    )*
+                    Object::Custom(buffers) => {
+                        if let Some(ref vertex_buf) = buffers.vertex_buf {
+                            if let Some(ref normals_buf) = buffers.normals_buf {
+                                if let Some(ref index_buf) = buffers.index_buf {
+                                    return Some((vertex_buf.clone(), normals_buf.clone(), index_buf.clone()));
+                                }
+                            }
+                        }
+
+                        None
+                    }
+                }
+            }
+        }
     };
 }
 
-impl Debug for Model {
-    fn fmt(&self, f: &mut fmt::Formatter) -> fmt::Result {
-        write!(f, "Model - vertices: {} - normals: {} - indices: {}", self.vertex_buf.is_some(), self.normals_buf.is_some(), self.index_buf.is_some())
-    }
-}
-
-impl Default for Model {
+impl Default for ModelBuffers {
     fn default() -> Self {
         Self {
             vertex_buf: None,
@@ -52,14 +95,14 @@ impl Default for Model {
     }
 }
 
-fn load_obj(logger: &mut Logger, queue: &Arc<Queue>, name: &str) -> Option<Model> {
+fn load_obj(logger: &mut Logger, queue: &Arc<Queue>, name: &str) -> Option<ModelBuffers> {
     let path = format!("./{}/models/{}.obj", ::NAME, name);
 
     let input = BufReader::new(
         match File::open(path) {
             Ok(res) => res,
             Err(err) => {
-                logger.warning("OpenOBJ", format!("Failed to open {}: {}", name, err));
+                logger.warning("OpenOBJ", format!("Failed to open {}.obj: {}", name, err));
                 return None;
             },
         }
@@ -68,7 +111,7 @@ fn load_obj(logger: &mut Logger, queue: &Arc<Queue>, name: &str) -> Option<Model
     let obj: obj::Obj<obj::Vertex> = match obj::load_obj(input) {
         Ok(res) => res,
         Err(err) => {
-            logger.warning("LoadOBJ", format!("Failed to load {}: {}", name, err));
+            logger.warning("LoadOBJ", format!("Failed to load {}.obj: {}", name, err));
             return None;
         },
     };
@@ -82,7 +125,7 @@ fn load_obj(logger: &mut Logger, queue: &Arc<Queue>, name: &str) -> Option<Model
         });;
     let indices = obj.indices;
 
-    Some(Model {
+    Some(ModelBuffers {
         vertex_buf: Some(Renderer::vertex_buffer(logger, queue, &vertices)),
         normals_buf: Some(Renderer::normals_buffer(logger, queue, &normals)),
         index_buf: Some(Renderer::index_buffer(logger, &queue, &indices)),
@@ -90,4 +133,4 @@ fn load_obj(logger: &mut Logger, queue: &Arc<Queue>, name: &str) -> Option<Model
 }
 
 // actually does the work, specify the objs here
-gen_objects!(teapot, a);
+gen_objects!(teapot);
