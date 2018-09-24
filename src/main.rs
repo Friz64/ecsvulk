@@ -71,9 +71,7 @@ fn main() {
     let mut ecs = ecs::init();
     let player = entities::create_player(&mut ecs, Vec3::new(0.0, 0.0, 0.0), 0.0, 0.0);
 
-    for i in (0..360).step_by(360) {
-        entities::create_obj(&mut ecs, Object::teapot, Vec3::new(0.0, 0.0, 0.0), 0.0, i as f32, 0.0);
-    }
+    entities::create_obj(&mut ecs, Object::teapot, Vec3::new(0.0, 0.0, 0.0), 0.0, 0.0, 0.0);
     
     if DEBUG {logger.warning("Debug", "This is a debug build, beware of any bugs or issues")}
     logger.info("Welcome", format!("{} {} - Made by Friz64", NAME, VERSION));
