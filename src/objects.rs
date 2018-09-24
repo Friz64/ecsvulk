@@ -3,11 +3,9 @@ use obj;
 use std::{
     io::BufReader,
     fs::File,
-    fmt::{self, Debug},
     default::Default,
     sync::Arc,
 };
-use ecs::components::Model;
 use graphics::renderer::{
     Vertex, Normal, Renderer,
 };
@@ -32,11 +30,15 @@ macro_rules! gen_objects {
 
         impl Objects {
             pub fn load(logger: &mut Logger, queue: &Arc<Queue>) -> Self {
-                Self {
+                let objs = Self {
                     $(
                         $name: load_obj(logger, queue, stringify!($name)).unwrap_or_default(),
                     )*
-                }
+                };
+
+                logger.info("ObjLoader", "Objs loaded");
+
+                objs
             }
         }
 

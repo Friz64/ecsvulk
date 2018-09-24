@@ -19,6 +19,7 @@ macro_rules! gen_pipeline {
             pub struct Pipeline {
                 pub pipeline: Arc<GraphicsPipelineAbstract + Send + Sync>,
                 pub cbp: CpuBufferPool<vs::ty::Data>,
+                pub sets_pool: FixedSizeDescriptorSetsPool<Arc<GraphicsPipelineAbstract + Send + Sync>>,
             }
 
             impl Pipeline {
@@ -52,10 +53,14 @@ macro_rules! gen_pipeline {
                     );
                     
                     let cbp = CpuBufferPool::new(device.clone(), BufferUsage::all());
+                    let sets_pool: FixedSizeDescriptorSetsPool<
+                        Arc<GraphicsPipelineAbstract + Send + Sync>
+                    > = FixedSizeDescriptorSetsPool::new(pipeline.clone(), 0);
 
                     $name::Pipeline {
                         pipeline: pipeline,
                         cbp,
+                        sets_pool,
                     }
                 }
             }

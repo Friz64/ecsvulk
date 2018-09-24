@@ -7,7 +7,10 @@ use logger::{
     Logger, LogType,
 };
 use objects::{
-    Objects, Object,
+    Objects,
+};
+use config::{
+    Config,
 };
 use ecs::{
     components::*,
@@ -21,7 +24,7 @@ use ::vulkano_win::{
 use ::vulkano::{
     instance::{self, debug::{DebugCallback, MessageTypes}, Instance, InstanceCreationError, ApplicationInfo, PhysicalDevice, Features},
     device::{Device, Queue, DeviceExtensions},
-    swapchain::{self, Surface, CapabilitiesError, Swapchain, SwapchainCreationError, CompositeAlpha, PresentMode, AcquireError},
+    swapchain::{self, Surface, CapabilitiesError, Swapchain, SwapchainCreationError, CompositeAlpha, PresentMode, AcquireError, ColorSpace},
     image::{swapchain::SwapchainImage, ImageUsage, attachment::AttachmentImage, sys::ImageCreationError, ImageDimensions},
     sync::{self, SharingMode, GpuFuture, FlushError},
     format::{Format, D16Unorm},
@@ -29,17 +32,17 @@ use ::vulkano::{
     pipeline::{GraphicsPipeline, GraphicsPipelineAbstract, viewport::Viewport, vertex::TwoBuffersDefinition},
     buffer::{immutable::ImmutableBuffer, cpu_pool::CpuBufferPool, BufferAccess, BufferUsage, TypedBufferAccess},
     memory::{DeviceMemoryAllocError},
-    descriptor::{PipelineLayoutAbstract, descriptor_set::{PersistentDescriptorSet, PersistentDescriptorSetBuildError}},
+    descriptor::{PipelineLayoutAbstract, descriptor_set::{FixedSizeDescriptorSetsPool, PersistentDescriptorSetBuildError}},
     command_buffer::{AutoCommandBufferBuilder, DynamicState, BeginRenderPassError, BuildError},
 };
 use ::cgmath::{
-    self, Angle,
+    self, Angle, InnerSpace,
 };
 use ::rayon::{
     ThreadPool,
 };
 use ::specs::{
-    World, Join,
+    World, Join, Entity,
 };
 
 pub type Vec3 = cgmath::Vector3<f32>;
@@ -67,9 +70,10 @@ mod pipelines {
 
 pub struct Renderer {
     pub focused: bool,
+    pub cursor_grabbed: bool,
 
     instance: Arc<Instance>,
-    surface: Arc<Surface<Window>>,
+    pub surface: Arc<Surface<Window>>,
 
     physical_device: usize, // lifetime issues
     device: Arc<Device>,
@@ -125,6 +129,7 @@ impl Renderer {
 
         (Renderer {
             focused: true,
+            cursor_grabbed: false,
 
             instance,
             surface,
@@ -298,16 +303,15 @@ impl Renderer {
                 _ => logger.error("SurfaceCapabilities", err),
             });
 
-        // TODO: temp test
         let surface_format = {
-            /*capabilities.supported_formats.iter()
+            capabilities.supported_formats.iter()
             // we try to find our preferred format
             .find(|(format, color_space)|
                 *format == Format::B8G8R8A8Unorm && *color_space == ColorSpace::SrgbNonLinear
             )
             // if that fails, we just use the first supported format
-            .unwrap_or(&capabilities.supported_formats[0])*/
-            capabilities.supported_formats[0]
+            .unwrap_or(&capabilities.supported_formats[0])
+            //capabilities.supported_formats[0]
         };
 
         let present_mode = { // https://docs.rs/vulkano/0.10.0/vulkano/swapchain/enum.PresentMode.html
@@ -551,12 +555,57 @@ impl Renderer {
         false
     }
 
-    fn pv_matrices(dimensions: [u32; 2], pos: Point3, pitch: f32, yaw: f32) -> (Mat4, Mat4) {
+    fn pv_matrices(logger: &mut Logger, delta_time: &f32, dimensions: [u32; 2], ecs: &World, player: &Entity, config: &Config) -> (Mat4, Mat4) {
+        let mut pos_storage = ecs.write_storage::<Pos>();
+        let pyr_storage = ecs.read_storage::<PitchYawRoll>();
+        let mut speed_storage = ecs.write_storage::<SpeedMultiplier>();
+
+        let player_pos = pos_storage.get_mut(*player)
+            .unwrap_or_else(|| logger.error("PlayerController", "Invalid Player Entity; missing Pos Component"));
+        let player_pyr = pyr_storage.get(*player)
+            .unwrap_or_else(|| logger.error("PlayerController", "Invalid Player Entity; missing PitchYawRoll Component"));
+        let player_speed = speed_storage.get_mut(*player)
+            .unwrap_or_else(|| logger.error("PlayerController", "Invalid Player Entity; missing SpeedMultiplier Component"));
+
         let front = Vec3::new(
-            cgmath::Rad(yaw).normalize().cos() * cgmath::Rad(pitch).normalize().cos(),
-            cgmath::Rad(pitch).normalize().sin(),
-            cgmath::Rad(yaw).normalize().sin() * cgmath::Rad(pitch).normalize().cos(),
+            cgmath::Rad(player_pyr.1).cos() * cgmath::Rad(player_pyr.0).cos(),
+            cgmath::Rad(player_pyr.0).sin(),
+            cgmath::Rad(player_pyr.1).sin() * cgmath::Rad(player_pyr.0).cos(),
         );
+
+        // update player speed multiplier
+        if config.controls.movement.speed_up.down() {
+            player_speed.0 += 0.1;
+        } else if config.controls.movement.speed_down.down() {
+            player_speed.0 -= 0.1;
+        }
+
+        if player_speed.0 <= 0.0 {
+            player_speed.0 = 0.1;
+        }
+
+        // update player pos
+        let delta_movement = config.controls.sensitivity.movement_speed * delta_time * 1.2 * player_speed.0;
+        let frontcross = front.cross(Vec3::new(0.0, 1.0, 0.0)).normalize();
+
+        if config.controls.movement.forwards.down_hold() {
+            player_pos.0 -= delta_movement * Vec3::new(-frontcross.z, frontcross.y, frontcross.x);
+        }
+        if config.controls.movement.backwards.down_hold() {
+            player_pos.0 += delta_movement * Vec3::new(-frontcross.z, frontcross.y, frontcross.x);
+        }
+        if config.controls.movement.left.down_hold() {
+            player_pos.0 -= delta_movement * frontcross;
+        }
+        if config.controls.movement.right.down_hold() {
+            player_pos.0 += delta_movement * frontcross;
+        }
+        if config.controls.movement.down.down_hold() {
+            player_pos.0.y -= delta_movement;
+        }
+        if config.controls.movement.up.down_hold() {
+            player_pos.0.y += delta_movement;
+        }
 
         let mut proj = {
             cgmath::perspective( // projection
@@ -566,8 +615,10 @@ impl Renderer {
             )
         };
 
+        // the vulkan coordinate system is in australia
         proj.y.y *= -1.0;
 
+        let pos = Point3::new(player_pos.0.x, player_pos.0.y, player_pos.0.z);
         let view = {
             Mat4::look_at_dir(   // view
                 pos,                    // position
@@ -579,12 +630,11 @@ impl Renderer {
         (proj, view)
     }
 
-    pub fn draw(&mut self, logger: &mut Logger, pool: &ThreadPool, world: &World, objects: &Objects) -> bool {
-        // it doesn't work if i put it outside this function
-        fn world_matrix(translation: Vec3, pitch: f32, yaw: f32, roll: f32) -> Mat4 {
-            Mat4::from_translation(translation) * Mat4::from_angle_x(cgmath::Deg(pitch)) * Mat4::from_angle_y(cgmath::Deg(yaw)) * Mat4::from_angle_z(cgmath::Deg(roll))
-        }
+    fn model_matrix(translation: Vec3, pitch: f32, yaw: f32, roll: f32) -> Mat4 {
+        Mat4::from_translation(translation) * Mat4::from_angle_x(cgmath::Deg(pitch)) * Mat4::from_angle_y(cgmath::Deg(yaw)) * Mat4::from_angle_z(cgmath::Deg(roll))
+    }
 
+    pub fn draw(&mut self, logger: &mut Logger, pool: &ThreadPool, delta_time: &f32, ecs: &World, player: &Entity, objects: &Objects, config: &Config) -> bool {
         if pool.install(|| {
             if Self::dimensions(logger, &self.surface) == [0, 0] {
                 return true
@@ -617,12 +667,12 @@ impl Renderer {
                 .cleanup_finished();
         });
 
+        pool.install(|| {
+
+        });
+
         let (projection, view) = pool.install(|| {
-            Self::pv_matrices(
-                self.swap_chain.dimensions(),
-                Point3::new(-5.0, 3.5, 0.0),
-                -0.4, 0.0,
-            )
+            Self::pv_matrices(logger, delta_time, self.swap_chain.dimensions(), ecs, player, config)
         });
 
         let command_buffer = pool.install(|| {
@@ -641,17 +691,19 @@ impl Renderer {
                     BeginRenderPassError::SyncCommandBufferBuilderError(err) => logger.error("BeginRenderPass", err),
                 });
 
-            let positions = world.read_storage::<Pos>();
-            let pitchyawroll = world.read_storage::<PitchYawRoll>();
-            let models = world.read_storage::<Model>();
+            let positions = ecs.read_storage::<Pos>();
+            let pitchyawroll = ecs.read_storage::<PitchYawRoll>();
+            let models = ecs.read_storage::<Model>();
 
             for (pos, PitchYawRoll(pitch, yaw, roll), model) in (&positions, &pitchyawroll, &models).join() {
+                let model_mat = Self::model_matrix(pos.0, *pitch, *yaw, *roll);
+
                 let main_set = pool.install(|| {
-                    Arc::new(PersistentDescriptorSet::start(self.main_pipeline.pipeline.clone(), 0)
+                    Arc::new(self.main_pipeline.sets_pool.next()
                         .add_buffer(self.main_pipeline.cbp.next(pipelines::main::vs::ty::Data {
-                                world: world_matrix(pos.0, *pitch, *yaw, *roll).into(),
-                                view: view.into(),
-                                proj: projection.into(),
+                                mvp: (projection * view * model_mat).into(),
+                                //view: view.into(),
+                                //model: model_mat.into(),
                             }).unwrap_or_else(|err| match err {
                                 DeviceMemoryAllocError::OomError(err) => logger.error("BufferPoolNext", err),
                                 _ => logger.error("BufferPoolNext", err),

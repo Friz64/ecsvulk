@@ -1,12 +1,3 @@
-/*
-Components:
-- Position
-- Model
-- Controls
-*/
-use ::std::{
-    sync::Arc,
-};
 use ::specs::{
     prelude::*,
     storage::{HashMapStorage},
@@ -26,15 +17,12 @@ impl Component for PitchYawRoll {
     type Storage = VecStorage<Self>;
 }
 
+pub struct SpeedMultiplier(pub f32);
+impl Component for SpeedMultiplier {
+    type Storage = HashMapStorage<Self>;
+}
+
 pub struct Model(pub Object);
 impl Component for Model {
     type Storage = VecStorage<Self>;
-}
-
-pub struct Controls;
-impl Default for Controls {
-    fn default() -> Self { Controls }
-}
-impl Component for Controls {
-    type Storage = NullStorage<Self>;
 }

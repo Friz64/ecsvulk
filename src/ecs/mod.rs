@@ -15,7 +15,7 @@ pub fn init() -> World {
     world.register::<Pos>();
     world.register::<PitchYawRoll>();
     world.register::<Model>();
-    world.register::<Controls>();
+    world.register::<SpeedMultiplier>();
 
     world
 }

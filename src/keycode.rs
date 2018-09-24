@@ -30,19 +30,23 @@ pub enum InputStatus {
 
 impl Input {
     pub fn none(&self) -> bool {
-        if self.status == InputStatus::None { true } else { false }
+        self.status == InputStatus::None
     }
 
     pub fn down(&self) -> bool {
-        if self.status == InputStatus::Down { true } else { false }
+        self.status == InputStatus::Down
     }
 
     pub fn hold(&self) -> bool {
-        if self.status == InputStatus::Hold { true } else { false }
+        self.status == InputStatus::Hold
+    }
+
+    pub fn down_hold(&self) -> bool {
+        self.status == InputStatus::Down || self.status == InputStatus::Hold
     }
 
     pub fn up(&self) -> bool {
-        if self.status == InputStatus::Up   { true } else { false }
+        self.status == InputStatus::Up
     }
 
     pub fn update_key(&mut self, keycode: Option<VirtualKeyCode>, state: ElementState) {

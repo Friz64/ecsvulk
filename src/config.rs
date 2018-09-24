@@ -23,12 +23,17 @@ impl Default for OptionConfig {
                     backwards:      Some("s".to_uppercase()),
                     left:           Some("a".to_uppercase()),
                     right:          Some("d".to_uppercase()),
+                    down:           Some("l_control".to_uppercase()),
+                    up:             Some("space".to_uppercase()),
                     speed_up:       Some("scroll_up".to_uppercase()),
                     speed_down:     Some("scroll_down".to_uppercase()),
                 }),
                 sensitivity: Some(OptionConfigControlsSensitivity {
                     mouse_speed:    Some(1.0),
                     movement_speed: Some(1.0),
+                }),
+                engine: Some(OptionConfigControlsEngine {
+                    grab_cursor:    Some("g".to_uppercase()),
                 }),
             })
         }
@@ -39,6 +44,7 @@ impl Default for OptionConfig {
 struct OptionConfigControls {
     movement:       Option<OptionConfigControlsMovement>,
     sensitivity:    Option<OptionConfigControlsSensitivity>,
+    engine:         Option<OptionConfigControlsEngine>,
 }
 
 impl Default for OptionConfigControls {
@@ -49,12 +55,17 @@ impl Default for OptionConfigControls {
                 backwards:      Some("s".to_uppercase()),
                 left:           Some("a".to_uppercase()),
                 right:          Some("d".to_uppercase()),
+                down:           Some("l_control".to_uppercase()),
+                up:             Some("space".to_uppercase()),
                 speed_up:       Some("scroll_up".to_uppercase()),
                 speed_down:     Some("scroll_down".to_uppercase()),
             }),
             sensitivity: Some(OptionConfigControlsSensitivity {
                 mouse_speed:    Some(1.0),
                 movement_speed: Some(1.0),
+            }),
+            engine: Some(OptionConfigControlsEngine {
+                grab_cursor:    Some("g".to_uppercase()),
             }),
         }
     }
@@ -66,6 +77,8 @@ struct OptionConfigControlsMovement {
     backwards:      Option<String>,
     left:           Option<String>,
     right:          Option<String>,
+    down:           Option<String>,
+    up:             Option<String>,
     speed_up:       Option<String>,
     speed_down:     Option<String>,
 }
@@ -77,6 +90,8 @@ impl Default for OptionConfigControlsMovement {
             backwards:      Some("s".to_uppercase()),
             left:           Some("a".to_uppercase()),
             right:          Some("d".to_uppercase()),
+            down:           Some("l_control".to_uppercase()),
+            up:             Some("space".to_uppercase()),
             speed_up:       Some("scroll_up".to_uppercase()),
             speed_down:     Some("scroll_down".to_uppercase()),
         }
@@ -98,6 +113,19 @@ impl Default for OptionConfigControlsSensitivity {
     }
 }
 
+#[derive(Deserialize, Serialize, Debug)]
+struct OptionConfigControlsEngine {
+    grab_cursor: Option<String>,
+}
+
+impl Default for OptionConfigControlsEngine {
+    fn default() -> Self {
+        OptionConfigControlsEngine {
+            grab_cursor: Some("g".to_uppercase()),
+        }
+    }
+}
+
 // Actual version thats used by the user.
 #[derive(Debug)]
 pub struct Config {
@@ -108,6 +136,7 @@ pub struct Config {
 pub struct ConfigControls {
     pub movement:       ConfigControlsMovement,
     pub sensitivity:    ConfigControlsSensitivity,
+    pub engine:         ConfigControlsEngine,
 }
 
 #[derive(Debug)]
@@ -116,6 +145,8 @@ pub struct ConfigControlsMovement {
     pub backwards:      Input,
     pub left:           Input,
     pub right:          Input,
+    pub down:           Input,
+    pub up:             Input,
     pub speed_up:       Input,
     pub speed_down:     Input,
 }
@@ -126,25 +157,35 @@ pub struct ConfigControlsSensitivity {
     pub movement_speed: f32,
 }
 
+#[derive(Debug)]
+pub struct ConfigControlsEngine {
+    pub grab_cursor:    Input,
+}
+
 impl Config {
     pub fn new(logger: &mut Logger, confpath: &str) -> Self {
         let config = OptionConfig::new(logger, confpath);
 
-        let config_controls = config
-            .controls.unwrap_or_else(|| {
-            logger.warning("ConfigChecker", "config.controls is invalid, using default");
-            Default::default()
-        });
-        let config_controls_movement = config_controls
-            .movement.unwrap_or_else(|| {
-            logger.warning("ConfigChecker", "config.controls.movement is invalid, using default");
-            Default::default()
-        });
-        let config_controls_sensitivity = config_controls
-            .sensitivity.unwrap_or_else(|| {
-            logger.warning("ConfigChecker", "config.controls.sensitivity is invalid, using default");
-            Default::default()
-        });
+        let config_controls = config.controls
+            .unwrap_or_else(|| {
+                logger.warning("ConfigChecker", "config.controls is invalid, using default");
+                Default::default()
+            });
+        let config_controls_movement = config_controls.movement
+            .unwrap_or_else(|| {
+                logger.warning("ConfigChecker", "config.controls.movement is invalid, using default");
+                Default::default()
+            });
+        let config_controls_sensitivity = config_controls.sensitivity
+            .unwrap_or_else(|| {
+                logger.warning("ConfigChecker", "config.controls.sensitivity is invalid, using default");
+                Default::default()
+            });
+        let config_controls_engine = config_controls.engine
+            .unwrap_or_else(|| {
+                logger.warning("ConfigChecker", "config.controls.engine is invalid, using default");
+                Default::default()
+            });
 
         let result = Config {
             controls: ConfigControls {
@@ -169,6 +210,16 @@ impl Config {
                         String::from("d")
                     })).warn_none(logger, "config.controls.movement.right"),
 
+                    down: Input::from_str(config_controls_movement.down.unwrap_or_else(|| {
+                        logger.warning("ConfigChecker", "config.controls.movement.down is invalid, using default");
+                        String::from("l_control")
+                    })).warn_none(logger, "config.controls.movement.down"),
+
+                    up: Input::from_str(config_controls_movement.up.unwrap_or_else(|| {
+                        logger.warning("ConfigChecker", "config.controls.movement.up is invalid, using default");
+                        String::from("space")
+                    })).warn_none(logger, "config.controls.movement.up"),
+
                     speed_up: Input::from_str(config_controls_movement.speed_up.unwrap_or_else(|| {
                         logger.warning("ConfigChecker", "config.controls.movement.speed_up is invalid, using default");
                         String::from("scroll_up")
@@ -190,6 +241,12 @@ impl Config {
                         1.0
                     }),
                 },
+                engine: ConfigControlsEngine {
+                    grab_cursor: Input::from_str(config_controls_engine.grab_cursor.unwrap_or_else(|| {
+                        logger.warning("ConfigChecker", "config.controls.engine.grab_cursor is invalid, using default");
+                        String::from("g")
+                    })).warn_none(logger, "config.controls.engine.grab_cursor"),
+                },
             },
         };
 
@@ -208,14 +265,19 @@ impl Config {
                     backwards: Some(self.controls.movement.backwards.to_string()),
                     left: Some(self.controls.movement.left.to_string()),
                     right: Some(self.controls.movement.right.to_string()),
+                    down: Some(self.controls.movement.down.to_string()),
+                    up: Some(self.controls.movement.up.to_string()),
                     speed_up: Some(self.controls.movement.speed_up.to_string()),
                     speed_down: Some(self.controls.movement.speed_down.to_string()),
                 }),
                 sensitivity: Some(OptionConfigControlsSensitivity {
                     mouse_speed: Some(self.controls.sensitivity.mouse_speed),
                     movement_speed: Some(self.controls.sensitivity.movement_speed),
+                }),
+                engine: Some(OptionConfigControlsEngine {
+                    grab_cursor: Some(self.controls.engine.grab_cursor.to_string())
                 })
-            })
+            }),
         };
         let serialized = toml::to_string(&reconstructed)
             .unwrap_or_else(|err| {
@@ -236,39 +298,51 @@ impl Config {
     }
 
     pub fn update_keys(&mut self, keycode: Option<VirtualKeyCode>, state: ElementState) {
-        self.controls.movement.forwards  .update_key(keycode, state);
-        self.controls.movement.backwards .update_key(keycode, state);
-        self.controls.movement.left      .update_key(keycode, state);
-        self.controls.movement.right     .update_key(keycode, state);
-        self.controls.movement.speed_up  .update_key(keycode, state);
-        self.controls.movement.speed_down.update_key(keycode, state);
+        self.controls.movement.forwards   .update_key(keycode, state);
+        self.controls.movement.backwards  .update_key(keycode, state);
+        self.controls.movement.left       .update_key(keycode, state);
+        self.controls.movement.right      .update_key(keycode, state);
+        self.controls.movement.speed_up   .update_key(keycode, state);
+        self.controls.movement.speed_down .update_key(keycode, state);
+        self.controls.movement.down       .update_key(keycode, state);
+        self.controls.movement.up         .update_key(keycode, state);
+        self.controls.engine  .grab_cursor.update_key(keycode, state);
     }
 
     pub fn update_mouse(&mut self, button: MouseButton, state: ElementState) {
-        self.controls.movement.forwards  .update_mouse(button, state);
-        self.controls.movement.backwards .update_mouse(button, state);
-        self.controls.movement.left      .update_mouse(button, state);
-        self.controls.movement.right     .update_mouse(button, state);
-        self.controls.movement.speed_up  .update_mouse(button, state);
-        self.controls.movement.speed_down.update_mouse(button, state);
+        self.controls.movement.forwards   .update_mouse(button, state);
+        self.controls.movement.backwards  .update_mouse(button, state);
+        self.controls.movement.left       .update_mouse(button, state);
+        self.controls.movement.right      .update_mouse(button, state);
+        self.controls.movement.speed_up   .update_mouse(button, state);
+        self.controls.movement.speed_down .update_mouse(button, state);
+        self.controls.movement.down       .update_mouse(button, state);
+        self.controls.movement.up         .update_mouse(button, state);
+        self.controls.engine  .grab_cursor.update_mouse(button, state);
     }
     
     pub fn update_scroll(&mut self, delta: f32) {
-        self.controls.movement.forwards  .update_scroll(delta);
-        self.controls.movement.backwards .update_scroll(delta);
-        self.controls.movement.left      .update_scroll(delta);
-        self.controls.movement.right     .update_scroll(delta);
-        self.controls.movement.speed_up  .update_scroll(delta);
-        self.controls.movement.speed_down.update_scroll(delta);
+        self.controls.movement.forwards   .update_scroll(delta);
+        self.controls.movement.backwards  .update_scroll(delta);
+        self.controls.movement.left       .update_scroll(delta);
+        self.controls.movement.right      .update_scroll(delta);
+        self.controls.movement.speed_up   .update_scroll(delta);
+        self.controls.movement.speed_down .update_scroll(delta);
+        self.controls.movement.down       .update_scroll(delta);
+        self.controls.movement.up         .update_scroll(delta);
+        self.controls.engine  .grab_cursor.update_scroll(delta);
     }
 
     pub fn update_status(&mut self) {
-        self.controls.movement.forwards  .update_status();
-        self.controls.movement.backwards .update_status();
-        self.controls.movement.left      .update_status();
-        self.controls.movement.right     .update_status();
-        self.controls.movement.speed_up  .update_status();
-        self.controls.movement.speed_down.update_status();
+        self.controls.movement.forwards   .update_status();
+        self.controls.movement.backwards  .update_status();
+        self.controls.movement.left       .update_status();
+        self.controls.movement.right      .update_status();
+        self.controls.movement.speed_up   .update_status();
+        self.controls.movement.speed_down .update_status();
+        self.controls.movement.down       .update_status();
+        self.controls.movement.up         .update_status();
+        self.controls.engine  .grab_cursor.update_status();
     }
 }
 

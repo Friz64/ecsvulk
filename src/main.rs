@@ -28,9 +28,12 @@ use config::*;
 use graphics::renderer::*;
 use objects::*;
 use ecs::{
-    entities,
+    entities, components::*,
 };
 
+use std::{
+    time::{Instant},
+};
 use winit::{
     Event, WindowEvent, DeviceEvent, KeyboardInput, MouseScrollDelta,
 };
@@ -55,7 +58,7 @@ const VERSION: Version = Version {
 
 fn main() {
     // comment and uncomment to recompile shaders
-    //assert!(true);
+    assert!(true);
 
     init();
     let mut logger = Logger::new("log.txt");
@@ -66,16 +69,27 @@ fn main() {
     let (mut renderer, _debug_callback) = Renderer::new(&mut logger, &events_loop);
     let objects = Objects::load(&mut logger, &renderer.queue);
     let mut ecs = ecs::init();
+    let player = entities::create_player(&mut ecs, Vec3::new(0.0, 0.0, 0.0), 0.0, 0.0);
 
-    for i in (0..360).step_by(10) {
+    for i in (0..360).step_by(360) {
         entities::create_obj(&mut ecs, Object::teapot, Vec3::new(0.0, 0.0, 0.0), 0.0, i as f32, 0.0);
     }
     
     if DEBUG {logger.warning("Debug", "This is a debug build, beware of any bugs or issues")}
     logger.info("Welcome", format!("{} {} - Made by Friz64", NAME, VERSION));
-
+    
+    let mut old_frame = Instant::now();
     let mut running = true;
     while running {
+        // update deltatime
+        let delta_time = pool.install(|| {
+            let this_frame = Instant::now();
+            let frametime = this_frame.duration_since(old_frame);
+            old_frame = this_frame;
+
+            frametime.as_secs() as f32 + frametime.subsec_nanos() as f32 / 1_000_000_000.0
+        });
+
         // handle events
         events_loop.poll_events(|event| pool.install(|| match event {
             Event::WindowEvent {event, ..} => match event {
@@ -93,34 +107,50 @@ fn main() {
                 DeviceEvent::MouseWheel {delta} if renderer.focused => if let MouseScrollDelta::LineDelta(_, y) = delta { 
                     config.update_scroll(y);
                 },
+                DeviceEvent::MouseMotion {delta} if renderer.focused && renderer.cursor_grabbed => {
+                    // update player pyr
+                    let mut pyr_storage = ecs.write_storage::<PitchYawRoll>();
+                    let mut player_pyr = pyr_storage.get_mut(player)
+                        .unwrap_or_else(|| logger.error("PlayerController", "Invalid Player Entity; missing Pos Component"));
+                    
+                    let mouse_speed = config.controls.sensitivity.mouse_speed * 0.85;
+
+                    player_pyr.0 -= delta.1 as f32 * mouse_speed * 0.005;
+                    player_pyr.1 += delta.0 as f32 * mouse_speed * 0.005;
+
+                    let max_pitch = std::f32::consts::FRAC_PI_2 - 0.0001;
+
+                    if player_pyr.0 > max_pitch { // locks looking up
+                        player_pyr.0 = max_pitch;
+                    } else if player_pyr.0 < -max_pitch { // locks looking down
+                        player_pyr.0 = -max_pitch;
+                    }
+                },
                 _ => (),
             },
             _ => (),
         }));
         
-        // handle active inputs
+        // updates down, hold, up and none
+        pool.install(|| config.update_status());
+
         pool.install(|| {
-            config.update_status();
+            if config.controls.engine.grab_cursor.down() {
+                renderer.cursor_grabbed = !renderer.cursor_grabbed;
 
-            if config.controls.movement.forwards.down() {
-                println!("forwards down");
-            }
-            if config.controls.movement.backwards.down() {
-                println!("backwards down");
-            }
-            if config.controls.movement.left.down() {
-                println!("left down");
-            }
-            if config.controls.movement.right.down() {
-                println!("right down");
-            }
+                renderer.surface.window().grab_cursor(renderer.cursor_grabbed)
+                    .unwrap_or_else(|err| logger.error("GrabCursor", err));
 
-            config.update_scroll(0.0);
+                renderer.surface.window().hide_cursor(renderer.cursor_grabbed);
+            }
         });
 
         if pool.install(|| {
-            renderer.draw(&mut logger, &pool, &ecs, &objects)
+            renderer.draw(&mut logger, &pool, &delta_time, &ecs, &player, &objects, &config)
         }) { continue; };
+
+        // sets scroll back to none
+        pool.install(|| config.update_scroll(0.0));
     };
 
     exit(&mut logger, 0);
