@@ -17,14 +17,15 @@ extern crate specs;
 mod helper;
 mod logger;
 mod config;
-mod keycode;
 mod graphics;
 mod ecs;
 mod objects;
 
 use helper::*;
 use logger::*;
-use config::*;
+use config::{
+    configloader::{self, UpdateConfig},
+};
 use graphics::renderer::*;
 use objects::*;
 use ecs::{
@@ -64,14 +65,23 @@ fn main() {
     let mut logger = Logger::new("log.txt");
     let pool = ThreadPoolBuilder::new().build()
         .unwrap_or_else(|err| logger.error("PoolCreate", err));
-    let mut config = Config::new(&mut logger, "config.toml");
+    let mut config = configloader::Config::new(&mut logger, "config.toml");
     let mut events_loop = winit::EventsLoop::new();
     let (mut renderer, _debug_callback) = Renderer::new(&mut logger, &events_loop);
     let objects = Objects::load(&mut logger, &renderer.queue);
     let mut ecs = ecs::init();
     let player = entities::create_player(&mut ecs, Vec3::new(0.0, 0.0, 0.0), 0.0, 0.0);
 
-    entities::create_obj(&mut ecs, Object::teapot, Vec3::new(0.0, 0.0, 0.0), 0.0, 0.0, 0.0);
+    let range: usize = 5;
+    for x in 0..range {
+        for y in 0..range {
+            for z in 0..range {
+                entities::create_obj(&mut ecs, Object::suzanne, Vec3::new(x as f32 * 5.0, y as f32 * 5.0, z as f32 * 5.0), 0.0, 0.0, 0.0);
+            }
+        }
+    }
+
+    //println!("{:#?}", config::testing_zone::ConfigControls {});
     
     if DEBUG {logger.warning("Debug", "This is a debug build, beware of any bugs or issues")}
     logger.info("Welcome", format!("{} {} - Made by Friz64", NAME, VERSION));

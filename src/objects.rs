@@ -135,4 +135,4 @@ fn load_obj(logger: &mut Logger, queue: &Arc<Queue>, name: &str) -> Option<Model
 }
 
 // actually does the work, specify the objs here
-gen_objects!(teapot);
+gen_objects!(teapot, suzanne);
