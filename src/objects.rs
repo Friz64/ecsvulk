@@ -7,11 +7,17 @@ use std::{
     sync::Arc,
 };
 use graphics::renderer::{
-    Vertex, Normal, Renderer,
+    Vertex, Normal, Renderer, Vec3,
 };
 use ::vulkano::{
     device::Queue,
     buffer::{BufferAccess, TypedBufferAccess},
+};
+use ::simdnoise::{
+    self, NoiseType,
+};
+use ::cgmath::{
+    InnerSpace,
 };
 
 pub struct ModelBuffers {
@@ -130,9 +136,84 @@ fn load_obj(logger: &mut Logger, queue: &Arc<Queue>, name: &str) -> Option<Model
     Some(ModelBuffers {
         vertex_buf: Some(Renderer::vertex_buffer(logger, queue, &vertices)),
         normals_buf: Some(Renderer::normals_buffer(logger, queue, &normals)),
-        index_buf: Some(Renderer::index_buffer(logger, &queue, &indices)),
+        index_buf: Some(Renderer::index_buffer(logger, queue, &indices)),
     })
 }
 
 // actually does the work, specify the objs here
 gen_objects!(teapot, suzanne);
+
+pub fn gen_terrain(logger: &mut Logger, queue: &Arc<Queue>) -> Object {
+    #[allow(non_snake_case)]
+    let KANTENLAENGE: usize = 256;
+    let range: usize = KANTENLAENGE * KANTENLAENGE;
+
+    let noise_type = NoiseType::Normal {
+        freq: 0.05,
+    };
+
+    let noise = simdnoise::get_2d_scaled_noise(0.0, KANTENLAENGE, 0.0, KANTENLAENGE, noise_type, 0.0, 10.0);
+
+    let mut vertices = vec![];
+    let mut normals = vec![];
+    for i in 0..range {
+        vertices.push(Vertex { pos: [(i / KANTENLAENGE) as f32, noise[i], (i % KANTENLAENGE) as f32]});
+        normals.push(Normal { normal: [0.0, 0.0, 0.0] });
+    }
+
+    let mut indices = vec![];
+    for i in 0..range - (KANTENLAENGE * 2 - 1) {
+        let x = i / (KANTENLAENGE - 1);
+        let z = i % (KANTENLAENGE - 1);
+
+        // triangle 1
+        indices.push((x * KANTENLAENGE + z) as u16);
+        indices.push(((x * KANTENLAENGE + z) + 1) as u16);
+        indices.push(((x + 1) * KANTENLAENGE + z) as u16);
+
+        // triangle 2
+        indices.push(((x * KANTENLAENGE + z) + 1) as u16);
+        indices.push(((x + 1) * KANTENLAENGE + z + 1) as u16);
+        indices.push(((x + 1) * KANTENLAENGE + z) as u16);
+    }
+
+    for i in 0..indices.len() / 3 {
+        /*
+        normal(vec3 a, vec3 b, vec3 c):
+        normal = cross(b - a, c - a).normalize()
+        a, b, c = vertex position
+        */
+
+        let ia = indices[i * 3] as usize;
+        let ib = indices[i * 3 + 1] as usize;
+        let ic = indices[i * 3 + 2] as usize;
+
+        let a: Vec3 = vertices[ia].pos.into();
+        let b: Vec3 = vertices[ib].pos.into();
+        let c: Vec3 = vertices[ic].pos.into();
+
+        let ba: Vec3 = b - a;
+        let ca: Vec3 = c - a;
+        let norm: Vec3 = ba.cross(ca).normalize();
+
+        let normals_ia: Vec3 = normals[ia].normal.into();
+        normals[ia].normal = (normals_ia + norm).into();
+
+        let normals_ib: Vec3 = normals[ib].normal.into();
+        normals[ib].normal = (normals_ib + norm).into();
+
+        let normals_ic: Vec3 = normals[ic].normal.into();
+        normals[ic].normal = (normals_ic + norm).into();
+    }
+
+    for i in 0..range {
+        let normals_i: Vec3 = normals[i].normal.into();
+        normals[i].normal = normals_i.normalize().into()
+    }
+
+    Object::Custom(ModelBuffers {
+        vertex_buf: Some(Renderer::vertex_buffer(logger, queue, &vertices)),
+        normals_buf: Some(Renderer::normals_buffer(logger, queue, &normals)),
+        index_buf: Some(Renderer::index_buffer(logger, queue, &indices)),
+    })
+}

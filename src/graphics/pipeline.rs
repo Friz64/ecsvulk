@@ -44,6 +44,9 @@ macro_rules! gen_pipeline {
                         .vertex_shader(vert.main_entry_point(), ())
                         .triangle_list()
                         .cull_mode_back()
+                        // wireframe
+                        //.polygon_mode_line()
+
                         .viewports_dynamic_scissors_irrelevant(1)
                         .fragment_shader(frag.main_entry_point(), ())
                         .depth_stencil_simple_depth()

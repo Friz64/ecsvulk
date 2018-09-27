@@ -12,6 +12,7 @@ extern crate rayon;
 extern crate cgmath;
 extern crate obj;
 extern crate specs;
+extern crate simdnoise;
 
 #[macro_use]
 mod helper;
@@ -72,16 +73,17 @@ fn main() {
     let mut ecs = ecs::init();
     let player = entities::create_player(&mut ecs, Vec3::new(0.0, 0.0, 0.0), 0.0, 0.0);
 
-    let range: usize = 5;
+    /*let range: usize = 5;
     for x in 0..range {
         for y in 0..range {
             for z in 0..range {
                 entities::create_obj(&mut ecs, Object::suzanne, Vec3::new(x as f32 * 5.0, y as f32 * 5.0, z as f32 * 5.0), 0.0, 0.0, 0.0);
             }
         }
-    }
+    }*/
 
-    //println!("{:#?}", config::testing_zone::ConfigControls {});
+    let terrain = objects::gen_terrain(&mut logger, &renderer.queue);
+    entities::create_obj(&mut ecs, terrain, Vec3::new(0.0, 0.0, 0.0), 0.0, 0.0, 0.0);
     
     if DEBUG {logger.warning("Debug", "This is a debug build, beware of any bugs or issues")}
     logger.info("Welcome", format!("{} {} - Made by Friz64", NAME, VERSION));

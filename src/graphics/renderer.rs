@@ -269,7 +269,10 @@ impl Renderer {
             1.0,
         );
 
-        let (device, mut queues) = Device::new(physical_device, &Features::none(),
+        let mut features = Features::none();
+        features.fill_mode_non_solid = true;
+
+        let (device, mut queues) = Device::new(physical_device, &features,
             required_extensions, [queue_family].iter().cloned())
             .unwrap_or_else(|err| logger.error("CreateDevice", err));
 
