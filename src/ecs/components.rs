@@ -22,6 +22,11 @@ impl Component for SpeedMultiplier {
     type Storage = HashMapStorage<Self>;
 }
 
+pub struct Wireframe(pub bool);
+impl Component for Wireframe {
+    type Storage = HashMapStorage<Self>;
+}
+
 pub struct Model(pub Object);
 impl Component for Model {
     type Storage = VecStorage<Self>;

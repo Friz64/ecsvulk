@@ -15,6 +15,9 @@ use config::{
 use ecs::{
     components::*,
 };
+use graphics::pipeline::{
+    PipelineSettings,
+};
 use ::winit::{
     WindowBuilder, EventsLoop, Window,
 };
@@ -29,7 +32,7 @@ use ::vulkano::{
     sync::{self, SharingMode, GpuFuture, FlushError},
     format::{Format, D16Unorm},
     framebuffer::{RenderPassAbstract, RenderPassCreationError, Subpass, Framebuffer, FramebufferAbstract, FramebufferCreationError},
-    pipeline::{GraphicsPipeline, GraphicsPipelineAbstract, viewport::Viewport, vertex::TwoBuffersDefinition},
+    pipeline::{GraphicsPipeline, GraphicsPipelineBuilder, GraphicsPipelineAbstract, viewport::Viewport, vertex::TwoBuffersDefinition},
     buffer::{immutable::ImmutableBuffer, cpu_pool::CpuBufferPool, BufferAccess, BufferUsage, TypedBufferAccess},
     memory::{DeviceMemoryAllocError},
     descriptor::{PipelineLayoutAbstract, descriptor_set::{FixedSizeDescriptorSetsPool, PersistentDescriptorSetBuildError}},
@@ -115,7 +118,11 @@ impl Renderer {
         let (swap_chain, swap_chain_images) = Self::swap_chain(logger, &instance, &surface, physical_device, &device, &queue);
 
         let render_pass = Self::render_pass(logger, &device, swap_chain.format());
-        let main_pipeline = Self::pipelines(logger, &device, &render_pass);
+
+        let main_pipeline = pipelines::main::Pipeline::new(logger, &device, &render_pass, PipelineSettings {
+            backfaceculling: true,
+            wireframe: false,
+        });
 
         let depth_buffer = Self::depth_buffer(logger, &device, swap_chain.dimensions())
             .unwrap_or_else(|| logger.error("CreateDepthBuffer", "Invalid dimensions"));
@@ -413,16 +420,6 @@ impl Renderer {
         }))
     }
 
-    fn pipelines(
-        logger: &mut Logger,
-        device: &Arc<Device>,
-        render_pass: &Arc<RenderPassAbstract + Send + Sync>,
-    ) -> (pipelines::main::Pipeline) {
-        //(
-            pipelines::main::Pipeline::new(logger, &device, &render_pass)//,
-        //)
-    }
-
     fn depth_buffer(
         logger: &mut Logger,
         device: &Arc<Device>,
@@ -543,7 +540,8 @@ impl Renderer {
         self.swap_chain_images = swap_chain_images;
 
         self.render_pass = Self::render_pass(logger, &self.device, self.swap_chain.format());
-        self.main_pipeline = Self::pipelines(logger, &self.device, &self.render_pass);
+
+        self.main_pipeline = pipelines::main::Pipeline::new(logger, &self.device, &self.render_pass, self.main_pipeline.settings.clone());
 
         self.depth_buffer = match Self::depth_buffer(logger, &self.device, dimensions) {
             Some(res) => res,
@@ -558,7 +556,7 @@ impl Renderer {
         false
     }
 
-    fn pv_matrices(logger: &mut Logger, delta_time: &f32, dimensions: [u32; 2], ecs: &World, player: &Entity, config: &Config) -> (Mat4, Mat4) {
+    fn update_player(logger: &mut Logger, delta_time: &f32, ecs: &World, player: &Entity, config: &Config) -> (Point3, Vec3) {
         let mut pos_storage = ecs.write_storage::<Pos>();
         let pyr_storage = ecs.read_storage::<PitchYawRoll>();
         let mut speed_storage = ecs.write_storage::<SpeedMultiplier>();
@@ -576,11 +574,13 @@ impl Renderer {
             cgmath::Rad(player_pyr.1).sin() * cgmath::Rad(player_pyr.0).cos(),
         );
 
+        let scrollspeed = config.controls.sensitivity.scroll_speed * 0.2;
+
         // update player speed multiplier
         if config.controls.movement.speed_up.down() {
-            player_speed.0 += 0.1;
+            player_speed.0 += scrollspeed;
         } else if config.controls.movement.speed_down.down() {
-            player_speed.0 -= 0.1;
+            player_speed.0 -= scrollspeed;
         }
 
         if player_speed.0 <= 0.0 {
@@ -610,25 +610,26 @@ impl Renderer {
             player_pos.0.y += delta_movement;
         }
 
-        let mut proj = {
-            cgmath::perspective( // projection
-                cgmath::Rad(::std::f32::consts::FRAC_PI_2),  // fov
-                dimensions[0] as f32 / dimensions[1] as f32, // aspect ratio
-                0.01, 100.0,                                 // near and far plane
-            )
-        };
+        let pos = Point3::new(player_pos.0.x, player_pos.0.y, player_pos.0.z);
+
+        (pos, front)
+    }
+
+    fn pv_matrices(dimensions: [u32; 2], pos: Point3, front: Vec3) -> (Mat4, Mat4) {
+        let mut proj = cgmath::perspective( // projection
+            cgmath::Rad(::std::f32::consts::FRAC_PI_2),  // fov
+            dimensions[0] as f32 / dimensions[1] as f32, // aspect ratio
+            0.01, 100.0,                                 // near and far plane
+        );
 
         // the vulkan coordinate system is in australia
         proj.y.y *= -1.0;
 
-        let pos = Point3::new(player_pos.0.x, player_pos.0.y, player_pos.0.z);
-        let view = {
-            Mat4::look_at_dir(   // view
-                pos,                    // position
-                front,                  // pitch yaw
-                (0.0, 1.0, 0.0).into(), // up
-            )
-        };
+        let view = Mat4::look_at_dir(   // view
+            pos,                    // position
+            front,                  // pitch yaw
+            (0.0, 1.0, 0.0).into(), // up
+        );
 
         (proj, view)
     }
@@ -670,12 +671,26 @@ impl Renderer {
                 .cleanup_finished();
         });
 
+        // update engine config stuff
         pool.install(|| {
+            if config.controls.engine.wireframe.down() {
+                let mut wireframe_storage = ecs.write_storage::<Wireframe>();
+                let player_wireframe = wireframe_storage.get_mut(*player)
+                    .unwrap_or_else(|| logger.error("PlayerController", "Invalid Player Entity; missing Wireframe Component"));
+                    
+                player_wireframe.0 = !player_wireframe.0;
 
+                let mut settings = self.main_pipeline.settings.clone();
+                settings.wireframe = player_wireframe.0;
+
+                self.main_pipeline = pipelines::main::Pipeline::new(logger, &self.device, &self.render_pass, settings);
+            }
         });
 
         let (projection, view) = pool.install(|| {
-            Self::pv_matrices(logger, delta_time, self.swap_chain.dimensions(), ecs, player, config)
+            let (pos, front) = pool.install(|| Self::update_player(logger, delta_time, ecs, player, config));
+
+            Self::pv_matrices(self.swap_chain.dimensions(), pos, front)
         });
 
         let command_buffer = pool.install(|| {

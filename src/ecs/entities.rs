@@ -14,6 +14,7 @@ pub fn create_player(world: &mut World, pos: Vec3, pitch: f32, yaw: f32) -> Enti
         .with(Pos(pos))
         .with(PitchYawRoll(pitch, yaw, 0.0))
         .with(SpeedMultiplier(1.0))
+        .with(Wireframe(false))
         .build()
 }
 

@@ -148,8 +148,11 @@ pub fn gen_terrain(logger: &mut Logger, queue: &Arc<Queue>) -> Object {
     let KANTENLAENGE: usize = 256;
     let range: usize = KANTENLAENGE * KANTENLAENGE;
 
-    let noise_type = NoiseType::Normal {
-        freq: 0.05,
+    let noise_type = NoiseType::Fbm {
+        freq: 0.11,
+        lacunarity: 0.5,
+        gain: 2.0,
+        octaves: 3,
     };
 
     let noise = simdnoise::get_2d_scaled_noise(0.0, KANTENLAENGE, 0.0, KANTENLAENGE, noise_type, 0.0, 10.0);

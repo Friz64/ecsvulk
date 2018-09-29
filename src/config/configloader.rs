@@ -24,9 +24,11 @@ gen_config! {
         ConfigControlsSensitivity sensitivity {
             mouse_speed f32 f32 1.0
             movement_speed f32 f32 1.0
+            scroll_speed f32 f32 1.0
         },
         ConfigControlsEngine engine {
             grab_cursor String Input "g".to_uppercase()
+            wireframe String Input "f".to_uppercase()
         }
     }
 }
@@ -112,12 +114,22 @@ impl Config {
                         logger.warning("ConfigChecker", "config.controls.sensitivity.movement_speed is invalid, using default");
                         1.0
                     }),
+
+                    scroll_speed: config_controls_sensitivity.scroll_speed.unwrap_or_else(|| {
+                        logger.warning("ConfigChecker", "config.controls.sensitivity.scroll_speed is invalid, using default");
+                        1.0
+                    }),
                 },
                 engine: ConfigControlsEngine {
                     grab_cursor: Input::from_str(config_controls_engine.grab_cursor.unwrap_or_else(|| {
                         logger.warning("ConfigChecker", "config.controls.engine.grab_cursor is invalid, using default");
                         String::from("g")
                     })).warn_none(logger, "config.controls.engine.grab_cursor"),
+
+                    wireframe: Input::from_str(config_controls_engine.wireframe.unwrap_or_else(|| {
+                        logger.warning("ConfigChecker", "config.controls.engine.wireframe is invalid, using default");
+                        String::from("f")
+                    })).warn_none(logger, "config.controls.engine.wireframe"),
                 },
             },
         };
@@ -146,9 +158,11 @@ impl Config {
                 sensitivity: Some(option::ConfigControlsSensitivity {
                     mouse_speed: Some(self.controls.sensitivity.mouse_speed),
                     movement_speed: Some(self.controls.sensitivity.movement_speed),
+                    scroll_speed: Some(self.controls.sensitivity.scroll_speed),
                 }),
                 engine: Some(option::ConfigControlsEngine {
-                    grab_cursor: Some(self.controls.engine.grab_cursor.to_string())
+                    grab_cursor: Some(self.controls.engine.grab_cursor.to_string()),
+                    wireframe: Some(self.controls.engine.wireframe.to_string())
                 })
             }),
         };

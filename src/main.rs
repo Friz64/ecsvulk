@@ -71,7 +71,7 @@ fn main() {
     let (mut renderer, _debug_callback) = Renderer::new(&mut logger, &events_loop);
     let objects = Objects::load(&mut logger, &renderer.queue);
     let mut ecs = ecs::init();
-    let player = entities::create_player(&mut ecs, Vec3::new(0.0, 0.0, 0.0), 0.0, 0.0);
+    let player = entities::create_player(&mut ecs, Vec3::new(10.0, 10.0, 125.0), 0.0, 0.0);
 
     /*let range: usize = 5;
     for x in 0..range {
