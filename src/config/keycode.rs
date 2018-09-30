@@ -96,14 +96,6 @@ impl Input {
             InputStatus::Up =>   if !self.active { self.status = InputStatus::None } else { self.status = InputStatus::Down },
         };
     }
-
-    pub fn warn_none(self, logger: &mut Logger, source: &str) -> Self {
-        match self.input {
-            InputType::None => logger.warning("ConfigChecker", format!("{} - \"{}\" isn't recognized, ignoring", source, self.source_string.to_uppercase())),
-            _ => (),
-        };
-        self
-    }
     
     /*
     python 3
@@ -121,9 +113,13 @@ impl Input {
 
         print('"' + output.lower() + '"' + " => InputType::Key(VirtualKeyCode::" + line + "),")
     */
-    pub fn from_str(input: String) -> Self {
-        let lower = input.to_lowercase();
-        let input_type = match &*lower { // im sorry
+    pub fn from_str(logger: &mut Logger, field: Option<String>, location: &str, default: &str) -> Self {
+        let input = field.unwrap_or_else(|| {
+            logger.warning("ConfigChecker", format!("{} is invalid, using default", location));
+            default.to_owned()
+        });
+
+        let mut input_type = match &*input.to_lowercase() { // im sorry
             "mouse_left" => InputType::MouseKey(MouseButton::Left),
             "mouse_right" => InputType::MouseKey(MouseButton::Right),
             "mouse_middle" => InputType::MouseKey(MouseButton::Middle),
@@ -282,7 +278,13 @@ impl Input {
             "paste" => InputType::Key(VirtualKeyCode::Paste),
             "cut" => InputType::Key(VirtualKeyCode::Cut),
             _ => InputType::None,
-        };      
+        };
+
+        if input_type == InputType::None {
+            logger.warning("ConfigChecker", format!("{} - \"{}\" isn't recognized, using default", location, input));
+
+            input_type = Self::from_str(logger, Some(default.to_owned()), location, default).input;
+        }
         
         Input {
             input: input_type,

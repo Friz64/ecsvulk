@@ -1,9 +1,10 @@
 #version 450
+
 layout(location = 0) in vec3 pos;
 layout(location = 1) in vec3 normal;
 
-layout(location = 0) out vec3 v_normal;
-//layout(location = 1) out mat4 frag_view;
+layout(location = 0) out vec3 v_pos;
+layout(location = 1) out vec3 v_normal;
 
 layout(set = 0, binding = 0) uniform Data {
     mat4 mvp;
@@ -13,6 +14,7 @@ layout(set = 0, binding = 0) uniform Data {
 
 void main() {
     gl_Position = uniforms.mvp * vec4(pos, 1);
+
+    v_pos = pos;
     v_normal = normal;
-    //frag_view = uniforms.view;
 }

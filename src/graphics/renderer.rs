@@ -1,7 +1,6 @@
 use std::{
     sync::Arc,
     boxed::Box,
-    marker,
 };
 use logger::{
     Logger, LogType,
@@ -32,10 +31,10 @@ use ::vulkano::{
     sync::{self, SharingMode, GpuFuture, FlushError},
     format::{Format, D16Unorm},
     framebuffer::{RenderPassAbstract, RenderPassCreationError, Subpass, Framebuffer, FramebufferAbstract, FramebufferCreationError},
-    pipeline::{GraphicsPipeline, GraphicsPipelineBuilder, GraphicsPipelineAbstract, viewport::Viewport, vertex::TwoBuffersDefinition},
+    pipeline::{GraphicsPipeline, GraphicsPipelineAbstract, viewport::Viewport, vertex::TwoBuffersDefinition},
     buffer::{immutable::ImmutableBuffer, cpu_pool::CpuBufferPool, BufferAccess, BufferUsage, TypedBufferAccess},
     memory::{DeviceMemoryAllocError},
-    descriptor::{PipelineLayoutAbstract, descriptor_set::{FixedSizeDescriptorSetsPool, PersistentDescriptorSetBuildError}},
+    descriptor::{descriptor_set::{FixedSizeDescriptorSetsPool, PersistentDescriptorSetBuildError}},
     command_buffer::{AutoCommandBufferBuilder, DynamicState, BeginRenderPassError, BuildError},
 };
 use ::cgmath::{
@@ -47,28 +46,54 @@ use ::rayon::{
 use ::specs::{
     World, Join, Entity,
 };
+use ::graphics::{
+    *, pipeline::PipelineAbstract,
+};
 
-pub type Vec3 = cgmath::Vector3<f32>;
-pub type Point3 = cgmath::Point3<f32>;
-pub type Mat4 = cgmath::Matrix4<f32>;
-
-#[derive(Copy, Clone, Debug)]
-pub struct Vertex {
-    pub pos: [f32; 3],
-}
-impl_vertex!(Vertex, pos);
-
-#[derive(Copy, Clone, Debug)]
-pub struct Normal {
-    pub normal: [f32; 3],
-}
-impl_vertex!(Normal, normal);
-
-// the cleanest way i found of implementing this
-mod pipelines {
+pub mod pipelines {
     use super::*;
 
-    gen_pipeline!(main, "shaders/main.vert", "shaders/main.frag");
+    gen_pipelines!(
+        [terrain, "shaders/terrain.vert", "shaders/terrain.frag", PipelineSettings {
+            backfaceculling: true,
+            wireframe: false,
+        }, (Vec3, (f32, f32, f32), &'a Model, Mat4, Mat4), 
+        |pipeline: &mut Self, logger: &mut Logger, pool: &ThreadPool, cmd_buffer: AutoCommandBufferBuilder, objects, state,
+            (pos, (pitch, yaw, roll), model, projection, view): Self::Data|
+        {
+            let mut cmd_buffer = cmd_buffer;
+
+            let model_mat = Renderer::model_matrix(pos, pitch, yaw, roll);
+
+            let set = pool.install(|| {
+                Arc::new(pipeline.sets_pool.next()
+                    .add_buffer(pipeline.cbp.next(vs::ty::Data {
+                            mvp: (projection * view * model_mat).into(),
+                            //view: view.into(),
+                            //model: model_mat.into(),
+                        }).unwrap_or_else(|err| match err {
+                            DeviceMemoryAllocError::OomError(err) => logger.error("BufferPoolNext", err),
+                            _ => logger.error("BufferPoolNext", err),
+                        })).unwrap_or_else(|err| logger.error("AddDescBuffer", err))
+                    .build().unwrap_or_else(|err| match err {
+                        PersistentDescriptorSetBuildError::OomError(err) => logger.error("CreateDescSet", err),
+                        _ => logger.error("CreateDescSet", err),
+                    })
+                )
+            });
+
+            if let Some((vertex_buf, normals_buf, index_buf)) = model.0.get_buffers(objects) {
+                cmd_buffer = cmd_buffer.draw_indexed(
+                    pipeline.pipeline.clone(), state,
+                    [vertex_buf.clone(), normals_buf.clone()].to_vec(),
+                    index_buf.clone(),
+                    set.clone(), ()
+                ).unwrap();
+            };
+
+            cmd_buffer
+        }]
+    );
 }
 
 pub struct Renderer {
@@ -87,8 +112,7 @@ pub struct Renderer {
     swap_chain_images: Vec<Arc<SwapchainImage<Window>>>,
 
     render_pass: Arc<RenderPassAbstract + Send + Sync>,
-
-    main_pipeline: pipelines::main::Pipeline,
+    pipelines: pipelines::Pipelines,
 
     depth_buffer: Arc<AttachmentImage<D16Unorm>>,
     swap_chain_framebuffers: Vec<Arc<FramebufferAbstract + Send + Sync>>,
@@ -119,10 +143,7 @@ impl Renderer {
 
         let render_pass = Self::render_pass(logger, &device, swap_chain.format());
 
-        let main_pipeline = pipelines::main::Pipeline::new(logger, &device, &render_pass, PipelineSettings {
-            backfaceculling: true,
-            wireframe: false,
-        });
+        let pipelines = pipelines::Pipelines::new(logger, &device, &render_pass);
 
         let depth_buffer = Self::depth_buffer(logger, &device, swap_chain.dimensions())
             .unwrap_or_else(|| logger.error("CreateDepthBuffer", "Invalid dimensions"));
@@ -150,8 +171,7 @@ impl Renderer {
             swap_chain_images,
 
             render_pass,
-
-            main_pipeline,
+            pipelines,
 
             depth_buffer,
             swap_chain_framebuffers,
@@ -541,7 +561,7 @@ impl Renderer {
 
         self.render_pass = Self::render_pass(logger, &self.device, self.swap_chain.format());
 
-        self.main_pipeline = pipelines::main::Pipeline::new(logger, &self.device, &self.render_pass, self.main_pipeline.settings.clone());
+        self.pipelines.recreate(logger, &self.device, &self.render_pass);
 
         self.depth_buffer = match Self::depth_buffer(logger, &self.device, dimensions) {
             Some(res) => res,
@@ -619,7 +639,7 @@ impl Renderer {
         let mut proj = cgmath::perspective( // projection
             cgmath::Rad(::std::f32::consts::FRAC_PI_2),  // fov
             dimensions[0] as f32 / dimensions[1] as f32, // aspect ratio
-            0.01, 100.0,                                 // near and far plane
+            0.01, 200.0,                                 // near and far plane
         );
 
         // the vulkan coordinate system is in australia
@@ -680,10 +700,10 @@ impl Renderer {
                     
                 player_wireframe.0 = !player_wireframe.0;
 
-                let mut settings = self.main_pipeline.settings.clone();
+                let mut settings = self.pipelines.terrain.settings.clone();
                 settings.wireframe = player_wireframe.0;
 
-                self.main_pipeline = pipelines::main::Pipeline::new(logger, &self.device, &self.render_pass, settings);
+                self.pipelines.terrain = pipelines::terrain::Pipeline::new(logger, &self.device, &self.render_pass, settings);
             }
         });
 
@@ -709,39 +729,19 @@ impl Renderer {
                     BeginRenderPassError::SyncCommandBufferBuilderError(err) => logger.error("BeginRenderPass", err),
                 });
 
+            let pipelines = ecs.read_storage::<Pipeline>();
             let positions = ecs.read_storage::<Pos>();
             let pitchyawroll = ecs.read_storage::<PitchYawRoll>();
             let models = ecs.read_storage::<Model>();
 
-            for (pos, PitchYawRoll(pitch, yaw, roll), model) in (&positions, &pitchyawroll, &models).join() {
-                let model_mat = Self::model_matrix(pos.0, *pitch, *yaw, *roll);
-
-                let main_set = pool.install(|| {
-                    Arc::new(self.main_pipeline.sets_pool.next()
-                        .add_buffer(self.main_pipeline.cbp.next(pipelines::main::vs::ty::Data {
-                                mvp: (projection * view * model_mat).into(),
-                                //view: view.into(),
-                                //model: model_mat.into(),
-                            }).unwrap_or_else(|err| match err {
-                                DeviceMemoryAllocError::OomError(err) => logger.error("BufferPoolNext", err),
-                                _ => logger.error("BufferPoolNext", err),
-                            })).unwrap_or_else(|err| logger.error("AddDescBuffer", err))
-                        .build().unwrap_or_else(|err| match err {
-                            PersistentDescriptorSetBuildError::OomError(err) => logger.error("CreateDescSet", err),
-                            _ => logger.error("CreateDescSet", err),
-                        })
-                    )
-                });
-
-                if let Some((vertex_buf, normals_buf, index_buf)) = model.0.get_buffers(objects) {
-                    command_buffer = command_buffer.draw_indexed(
-                        self.main_pipeline.pipeline.clone(),
-                        &self.dynamic_state,
-                        [vertex_buf.clone(), normals_buf.clone()].to_vec(),
-                        index_buf.clone(),
-                        main_set.clone(), ()
-                    ).unwrap();
-                }
+            for (pos, PitchYawRoll(pitch, yaw, roll), model, pipeline) in (&positions, &pitchyawroll, &models, &pipelines).join() {
+                match pipeline.0 {
+                    pipelines::Pipeline::terrain => {
+                        command_buffer = self.pipelines.terrain.draw(logger, pool, command_buffer, objects, &self.dynamic_state, 
+                            (pos.0, (*pitch, *yaw, *roll), model, projection, view)
+                        );
+                    }
+                };
             }
 
             command_buffer.end_render_pass()

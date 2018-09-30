@@ -1,12 +1,65 @@
+use logger::Logger;
+use objects::Objects;
+use ::vulkano::command_buffer::{
+    AutoCommandBufferBuilder, DynamicState,
+};
+use ::rayon::ThreadPool;
+
 #[derive(Copy, Clone)]
 pub struct PipelineSettings {
     pub backfaceculling: bool,
     pub wireframe: bool,
 }
 
-macro_rules! gen_pipeline {
-    ($name:ident, $vert_src:expr, $frag_src:expr) => {
-        pub mod $name {
+impl Default for PipelineSettings {
+    fn default() -> Self {
+        PipelineSettings {
+            backfaceculling: true,
+            wireframe: false,
+        }
+    }
+}
+
+pub trait PipelineAbstract<'a> {
+    type Data;
+
+    fn draw(&mut self, logger: &mut Logger, pool: &ThreadPool, cmd_buffer: AutoCommandBufferBuilder, objects: &Objects, state: &DynamicState, data: Self::Data)
+        -> AutoCommandBufferBuilder;
+}
+
+macro_rules! gen_pipelines {
+    ( $([$name:ident, $vert_src:expr, $frag_src:expr, $settings:expr, $data:ty, $func:expr]),* ) => {
+        pub struct Pipelines {
+            $(
+                pub $name: $name::Pipeline,
+            )*
+        }
+
+        impl Pipelines {
+            pub fn new(logger: &mut Logger, device: &Arc<Device>, render_pass: &Arc<RenderPassAbstract + Send + Sync>) -> Self {
+                Pipelines {
+                    $(
+                        $name: $name::Pipeline::new(logger, device, render_pass, $settings),
+                    )*
+                }
+            }
+
+            pub fn recreate(&self, logger: &mut Logger, device: &Arc<Device>, render_pass: &Arc<RenderPassAbstract + Send + Sync>) -> Self {
+                Pipelines {
+                    $(
+                        $name: $name::Pipeline::new(logger, device, render_pass, self.$name.settings),
+                    )*
+                }
+            }
+        }
+
+        pub enum Pipeline {
+            $(
+                $name,
+            )*
+        }
+
+        $(pub mod $name {
             pub mod vs {
                 #[derive(VulkanoShader)]
                 #[ty = "vertex"]
@@ -78,6 +131,18 @@ macro_rules! gen_pipeline {
                     }
                 }
             }
-        }
+
+            impl<'a> PipelineAbstract<'a> for Pipeline {
+                type Data = $data;
+
+                fn draw(&mut self, logger: &mut Logger, pool: &ThreadPool, cmd_buffer: AutoCommandBufferBuilder, objects: &Objects, state: &DynamicState, data: Self::Data)
+                    -> AutoCommandBufferBuilder
+                {
+                    let func = $func;
+
+                    func(self, logger, pool, cmd_buffer, objects, state, data)
+                }
+            }
+        })*
     };
 }

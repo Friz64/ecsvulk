@@ -4,10 +4,10 @@ use std::{
     io::BufReader,
     fs::File,
     default::Default,
-    sync::Arc,
+    sync::{Arc},
 };
-use graphics::renderer::{
-    Vertex, Normal, Renderer, Vec3,
+use graphics::{
+    self, Vec3, Vertex, Normal, renderer::Renderer,
 };
 use ::vulkano::{
     device::Queue,
@@ -143,80 +143,76 @@ fn load_obj(logger: &mut Logger, queue: &Arc<Queue>, name: &str) -> Option<Model
 // actually does the work, specify the objs here
 gen_objects!(teapot, suzanne);
 
-pub fn gen_terrain(logger: &mut Logger, queue: &Arc<Queue>) -> Object {
-    #[allow(non_snake_case)]
-    let KANTENLAENGE: usize = 256;
-    let range: usize = KANTENLAENGE * KANTENLAENGE;
+pub fn gen_terrain(logger: &mut Logger, queue: &Arc<Queue>, scale: f32, x_off: f32, y_off: f32, noise_type: NoiseType) -> Object {
+    let length: usize = 255;
+    let range = length.pow(2);
 
-    let noise_type = NoiseType::Fbm {
-        freq: 0.11,
-        lacunarity: 0.5,
-        gain: 2.0,
-        octaves: 3,
-    };
-
-    let noise = simdnoise::get_2d_scaled_noise(0.0, KANTENLAENGE, 0.0, KANTENLAENGE, noise_type, 0.0, 10.0);
+    let noise = simdnoise::get_2d_scaled_noise(x_off, length, y_off, length, noise_type, 0.0, scale);
 
     let mut vertices = vec![];
-    let mut normals = vec![];
-    for i in 0..range {
-        vertices.push(Vertex { pos: [(i / KANTENLAENGE) as f32, noise[i], (i % KANTENLAENGE) as f32]});
-        normals.push(Normal { normal: [0.0, 0.0, 0.0] });
-    }
+    let mut normals =  vec![];
+    let mut indices =  vec![];
 
-    let mut indices = vec![];
-    for i in 0..range - (KANTENLAENGE * 2 - 1) {
-        let x = i / (KANTENLAENGE - 1);
-        let z = i % (KANTENLAENGE - 1);
+    // iterates over every point, generates a vertex and a default normal
+    for i in 0..range {
+        vertices.push(Vertex { pos:    [(i / length) as f32, noise[i], (i % length) as f32]});
+        normals.push( Normal { normal: [0.0,                 0.0,      0.0                ]});
+    };
+
+    // generate indices
+    for i in 0..range - (length * 2 - 1) {
+        // gets x and z from i
+        let x = i / (length - 1);
+        let z = i % (length - 1);
 
         // triangle 1
-        indices.push((x * KANTENLAENGE + z) as u16);
-        indices.push(((x * KANTENLAENGE + z) + 1) as u16);
-        indices.push(((x + 1) * KANTENLAENGE + z) as u16);
+        indices.push( (x      * length + z     ) as u16);
+        indices.push(((x      * length + z) + 1) as u16);
+        indices.push(((x + 1) * length + z     ) as u16);
 
         // triangle 2
-        indices.push(((x * KANTENLAENGE + z) + 1) as u16);
-        indices.push(((x + 1) * KANTENLAENGE + z + 1) as u16);
-        indices.push(((x + 1) * KANTENLAENGE + z) as u16);
+        indices.push(((x      * length + z) + 1) as u16);
+        indices.push(((x + 1) * length + z  + 1) as u16);
+        indices.push(((x + 1) * length + z     ) as u16);
     }
 
+    // generate normals
     for i in 0..indices.len() / 3 {
-        /*
-        normal(vec3 a, vec3 b, vec3 c):
-        normal = cross(b - a, c - a).normalize()
-        a, b, c = vertex position
-        */
+        // assuming vertices at points a, b, c
 
-        let ia = indices[i * 3] as usize;
-        let ib = indices[i * 3 + 1] as usize;
-        let ic = indices[i * 3 + 2] as usize;
+        // indices of the points
+        let index_a = indices[i * 3    ] as usize;
+        let index_b = indices[i * 3 + 1] as usize;
+        let index_c = indices[i * 3 + 2] as usize;
 
-        let a: Vec3 = vertices[ia].pos.into();
-        let b: Vec3 = vertices[ib].pos.into();
-        let c: Vec3 = vertices[ic].pos.into();
+        // positions of the points
+        let vertex_a: Vec3 = vertices[index_a].pos.into();
+        let vertex_b: Vec3 = vertices[index_b].pos.into();
+        let vertex_c: Vec3 = vertices[index_c].pos.into();
 
-        let ba: Vec3 = b - a;
-        let ca: Vec3 = c - a;
-        let norm: Vec3 = ba.cross(ca).normalize();
+        // magic https://computergraphics.stackexchange.com/questions/4031/programmatically-generating-vertex-normals
+        let normal = (vertex_b - vertex_a)
+            .cross(vertex_c - vertex_a);
 
-        let normals_ia: Vec3 = normals[ia].normal.into();
-        normals[ia].normal = (normals_ia + norm).into();
-
-        let normals_ib: Vec3 = normals[ib].normal.into();
-        normals[ib].normal = (normals_ib + norm).into();
-
-        let normals_ic: Vec3 = normals[ic].normal.into();
-        normals[ic].normal = (normals_ic + norm).into();
+        // add the normal to the normals of the points
+        graphics::add(&mut normals[index_a].normal, normal);
+        graphics::add(&mut normals[index_b].normal, normal);
+        graphics::add(&mut normals[index_c].normal, normal);
     }
 
+    // normalize every normal
     for i in 0..range {
-        let normals_i: Vec3 = normals[i].normal.into();
-        normals[i].normal = normals_i.normalize().into()
+        let normal: Vec3 = normals[i].normal.into();
+        normals[i].normal = normal.normalize().into()
     }
 
-    Object::Custom(ModelBuffers {
+    let result = Object::Custom(ModelBuffers {
         vertex_buf: Some(Renderer::vertex_buffer(logger, queue, &vertices)),
         normals_buf: Some(Renderer::normals_buffer(logger, queue, &normals)),
         index_buf: Some(Renderer::index_buffer(logger, queue, &indices)),
-    })
+    });
+
+    logger.info("TerrainGen", format!("Terrain generated with length {}", length));
+
+    result
 }

@@ -3,7 +3,9 @@ use std::{
     io::{self, SeekFrom, Write},
 };
 use logger::Logger;
-use super::keycode::Input;
+use super::keycode::{
+    Input, InputType,
+};
 use ::toml;
 use ::winit::{
     VirtualKeyCode, ElementState, MouseButton,
@@ -64,45 +66,21 @@ impl Config {
         let result = Config {
             controls: ConfigControls {
                 movement: ConfigControlsMovement {
-                    forwards: Input::from_str(config_controls_movement.forwards.unwrap_or_else(|| {
-                        logger.warning("ConfigChecker", "config.controls.movement.forwards is invalid, using default");
-                        String::from("w")
-                    })).warn_none(logger, "config.controls.movement.forwards"),
+                    forwards: Input::from_str(logger, config_controls_movement.forwards, "config.controls.movement.forwards", "w"),
 
-                    backwards: Input::from_str(config_controls_movement.backwards.unwrap_or_else(|| {
-                        logger.warning("ConfigChecker", "config.controls.movement.backwards is invalid, using default");
-                        String::from("s")
-                    })).warn_none(logger, "config.controls.movement.backwards"),
+                    backwards: Input::from_str(logger, config_controls_movement.backwards, "config.controls.movement.backwards", "s"),
 
-                    left: Input::from_str(config_controls_movement.left.unwrap_or_else(|| {
-                        logger.warning("ConfigChecker", "config.controls.movement.left is invalid, using default");
-                        String::from("a")
-                    })).warn_none(logger, "config.controls.movement.left"),
+                    left: Input::from_str(logger, config_controls_movement.left, "config.controls.movement.left", "a"),
 
-                    right: Input::from_str(config_controls_movement.right.unwrap_or_else(|| {
-                        logger.warning("ConfigChecker", "config.controls.movement.right is invalid, using default");
-                        String::from("d")
-                    })).warn_none(logger, "config.controls.movement.right"),
+                    right: Input::from_str(logger, config_controls_movement.right, "config.controls.movement.right", "d"),
 
-                    down: Input::from_str(config_controls_movement.down.unwrap_or_else(|| {
-                        logger.warning("ConfigChecker", "config.controls.movement.down is invalid, using default");
-                        String::from("l_control")
-                    })).warn_none(logger, "config.controls.movement.down"),
+                    down: Input::from_str(logger, config_controls_movement.down, "config.controls.movement.down", "l_control"),
 
-                    up: Input::from_str(config_controls_movement.up.unwrap_or_else(|| {
-                        logger.warning("ConfigChecker", "config.controls.movement.up is invalid, using default");
-                        String::from("space")
-                    })).warn_none(logger, "config.controls.movement.up"),
+                    up: Input::from_str(logger, config_controls_movement.up, "config.controls.movement.up", "space"),
 
-                    speed_up: Input::from_str(config_controls_movement.speed_up.unwrap_or_else(|| {
-                        logger.warning("ConfigChecker", "config.controls.movement.speed_up is invalid, using default");
-                        String::from("scroll_up")
-                    })).warn_none(logger, "config.controls.movement.speed_up"),
+                    speed_up: Input::from_str(logger, config_controls_movement.speed_up, "config.controls.movement.speed_up", "scroll_up"),
 
-                    speed_down: Input::from_str(config_controls_movement.speed_down.unwrap_or_else(|| {
-                        logger.warning("ConfigChecker", "config.controls.movement.speed_down is invalid, using default");
-                        String::from("scroll_down")
-                    })).warn_none(logger, "config.controls.movement.speed_down"),
+                    speed_down: Input::from_str(logger, config_controls_movement.speed_down, "config.controls.movement.speed_down", "scroll_down"),
                 },
                 sensitivity: ConfigControlsSensitivity {
                     mouse_speed: config_controls_sensitivity.mouse_speed.unwrap_or_else(|| {
@@ -121,15 +99,9 @@ impl Config {
                     }),
                 },
                 engine: ConfigControlsEngine {
-                    grab_cursor: Input::from_str(config_controls_engine.grab_cursor.unwrap_or_else(|| {
-                        logger.warning("ConfigChecker", "config.controls.engine.grab_cursor is invalid, using default");
-                        String::from("g")
-                    })).warn_none(logger, "config.controls.engine.grab_cursor"),
+                    grab_cursor: Input::from_str(logger, config_controls_engine.grab_cursor, "config.controls.engine.grab_cursor", "g"),
 
-                    wireframe: Input::from_str(config_controls_engine.wireframe.unwrap_or_else(|| {
-                        logger.warning("ConfigChecker", "config.controls.engine.wireframe is invalid, using default");
-                        String::from("f")
-                    })).warn_none(logger, "config.controls.engine.wireframe"),
+                    wireframe: Input::from_str(logger, config_controls_engine.wireframe, "config.controls.engine.wireframe", "f"),
                 },
             },
         };

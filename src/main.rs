@@ -27,12 +27,13 @@ use logger::*;
 use config::{
     configloader::{self, UpdateConfig},
 };
-use graphics::renderer::*;
+use graphics::{
+    *, renderer::*,
+};
 use objects::*;
 use ecs::{
     entities, components::*,
 };
-
 use std::{
     time::{Instant},
 };
@@ -44,6 +45,9 @@ use vulkano::{
 };
 use rayon::{
     ThreadPoolBuilder,
+};
+use simdnoise::{
+    NoiseType,
 };
 
 #[cfg(debug_assertions)]
@@ -60,7 +64,7 @@ const VERSION: Version = Version {
 
 fn main() {
     // comment and uncomment to recompile shaders
-    assert!(true);
+    //assert!(true);
 
     init();
     let mut logger = Logger::new("log.txt");
@@ -73,17 +77,14 @@ fn main() {
     let mut ecs = ecs::init();
     let player = entities::create_player(&mut ecs, Vec3::new(10.0, 10.0, 125.0), 0.0, 0.0);
 
-    /*let range: usize = 5;
-    for x in 0..range {
-        for y in 0..range {
-            for z in 0..range {
-                entities::create_obj(&mut ecs, Object::suzanne, Vec3::new(x as f32 * 5.0, y as f32 * 5.0, z as f32 * 5.0), 0.0, 0.0, 0.0);
-            }
-        }
-    }*/
+    let terrain = objects::gen_terrain(&mut logger, &renderer.queue, 10.0, 0.0, 0.0, NoiseType::Fbm {
+        freq: 0.11,
+        lacunarity: 0.5,
+        gain: 2.0,
+        octaves: 3,
+    });
 
-    let terrain = objects::gen_terrain(&mut logger, &renderer.queue);
-    entities::create_obj(&mut ecs, terrain, Vec3::new(0.0, 0.0, 0.0), 0.0, 0.0, 0.0);
+    entities::create_obj(&mut ecs, pipelines::Pipeline::terrain, terrain, Vec3::new(0.0, 0.0, 0.0), 0.0, 0.0, 0.0);
     
     if DEBUG {logger.warning("Debug", "This is a debug build, beware of any bugs or issues")}
     logger.info("Welcome", format!("{} {} - Made by Friz64", NAME, VERSION));

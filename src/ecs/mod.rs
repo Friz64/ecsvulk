@@ -17,6 +17,7 @@ pub fn init() -> World {
     world.register::<Model>();
     world.register::<SpeedMultiplier>();
     world.register::<Wireframe>();
+    world.register::<Pipeline>();
 
     world
 }

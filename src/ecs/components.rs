@@ -2,10 +2,11 @@ use ::specs::{
     prelude::*,
     storage::{HashMapStorage},
 };
-use ::graphics::renderer::{
+use ::graphics::{
     Vec3,
 };
 use ::objects::Object;
+use ::renderer::pipelines;
 
 pub struct Pos(pub Vec3);
 impl Component for Pos {
@@ -29,5 +30,10 @@ impl Component for Wireframe {
 
 pub struct Model(pub Object);
 impl Component for Model {
+    type Storage = VecStorage<Self>;
+}
+
+pub struct Pipeline(pub pipelines::Pipeline);
+impl Component for Pipeline {
     type Storage = VecStorage<Self>;
 }
