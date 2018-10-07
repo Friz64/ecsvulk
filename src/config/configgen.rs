@@ -1,8 +1,6 @@
 // https://github.com/Friz64/ecsvulk/issues/2
 macro_rules! gen_config {
     ( $( $main_name:ident $main_name_short:ident { $( $sub_name:ident $sub_name_short:ident { $( $field_name: ident $option_type:ident $real_type:ident $default:expr )* } ),* } ),* ) => (
-        use ::std::io::{Read, Seek};
-
         trait UpdateConfigHack {
             fn update_key(&mut self, _: Option<VirtualKeyCode>, _: ElementState);
             fn update_mouse(&mut self, _: MouseButton, _: ElementState);
@@ -90,6 +88,8 @@ macro_rules! gen_config {
             )* 
 
             pub fn new(logger: &mut Logger, config_path: &str) -> Config {
+                use std::io::{Read, Seek};
+
                 let path = format!("./{}/{}", ::NAME, config_path);
                 let default = Config::default();
 

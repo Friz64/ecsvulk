@@ -2,11 +2,10 @@ use ::specs::{
     prelude::*,
     storage::{HashMapStorage},
 };
-use ::graphics::{
-    Vec3,
-};
+use ::graphics::Vec3;
 use ::objects::Object;
 use ::renderer::pipelines;
+use ::nphysics3d::object::BodyHandle;
 
 pub struct Pos(pub Vec3);
 impl Component for Pos {
@@ -37,3 +36,12 @@ pub struct Pipeline(pub pipelines::Pipeline);
 impl Component for Pipeline {
     type Storage = VecStorage<Self>;
 }
+
+pub struct Physics(pub BodyHandle);
+impl Component for Physics {
+    type Storage = VecStorage<Self>;
+}
+/*
+impl Physics {
+    fn new()
+}*/

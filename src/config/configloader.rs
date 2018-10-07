@@ -4,7 +4,7 @@ use std::{
 };
 use logger::Logger;
 use super::keycode::{
-    Input, InputType,
+    Input
 };
 use ::toml;
 use ::winit::{

@@ -1,7 +1,12 @@
 use logger::Logger;
 use std::fs;
 use std::io::ErrorKind;
-use std::io::{Write};
+use std::io::Write;
+
+use ::nphysics3d::{
+    world::World,
+    math::Vector,
+};
 
 macro_rules! shutdown {
     ($e:expr) => {{
@@ -21,6 +26,14 @@ pub fn init() {
                 shutdown!(1)
             },
         });
+}
+
+pub fn create_physics() -> World<f32> {
+    let mut world = World::new();
+
+    world.set_gravity(Vector::y() * -9.81);
+
+    world
 }
 
 pub fn exit(logger: &mut Logger, exit_code: i32) -> ! {

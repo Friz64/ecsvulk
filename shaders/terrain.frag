@@ -9,7 +9,7 @@ void main() {
     vec3 color = v_normal;
 
     if (v_pos.y < 2.75) {
-        color = vec3(0.0, 0.12, 0.58);
+        color = vec3(0.0, 0.12, 0.58) * (1 - (v_pos.y - 2.75) / 2.75);
     }
 
     f_color = vec4(color, 1.0);

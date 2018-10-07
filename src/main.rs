@@ -13,6 +13,9 @@ extern crate cgmath;
 extern crate obj;
 extern crate specs;
 extern crate simdnoise;
+extern crate nphysics3d;
+extern crate ncollide3d;
+extern crate nalgebra;
 
 #[macro_use]
 mod helper;
@@ -28,11 +31,13 @@ use config::{
     configloader::{self, UpdateConfig},
 };
 use graphics::{
-    *, renderer::*,
+    *, renderer::{*, pipelines::Pipeline},
 };
 use objects::*;
 use ecs::{
-    entities, components::*,
+    entities, components::{
+        PitchYawRoll, Pos,
+    },
 };
 use std::{
     time::{Instant},
@@ -72,9 +77,10 @@ fn main() {
         .unwrap_or_else(|err| logger.error("PoolCreate", err));
     let mut config = configloader::Config::new(&mut logger, "config.toml");
     let mut events_loop = winit::EventsLoop::new();
-    let (mut renderer, _debug_callback) = Renderer::new(&mut logger, &events_loop);
+    let (mut renderer, _debug) = Renderer::new(&mut logger, &events_loop);
     let objects = Objects::load(&mut logger, &renderer.queue);
     let mut ecs = ecs::init();
+    let mut physics = create_physics();
     let player = entities::create_player(&mut ecs, Vec3::new(10.0, 10.0, 125.0), 0.0, 0.0);
 
     let terrain = objects::gen_terrain(&mut logger, &renderer.queue, 10.0, 0.0, 0.0, NoiseType::Fbm {
@@ -84,9 +90,23 @@ fn main() {
         octaves: 3,
     });
 
-    entities::create_obj(&mut ecs, pipelines::Pipeline::terrain, terrain, Vec3::new(0.0, 0.0, 0.0), 0.0, 0.0, 0.0);
+    entities::create_obj(&mut ecs, Pipeline::terrain, terrain, Vec3::new(0.0, 0.0, 0.0), 0.0, 0.0, 0.0);
+
+    //entities::create_obj(&mut ecs, Pipeline::normal, Object::suzanne, Vec3::new(0.0, 5.0, 0.0), 0.0, 0.0, 0.0);
+
+    // testing physics
+    use nphysics3d::volumetric::Volumetric;
+
+    let cuboid = ncollide3d::shape::ShapeHandle::new(ncollide3d::shape::Cuboid::new(nalgebra::Vector3::new(1.0, 2.0, 1.0)));
+    let local_inertia = cuboid.inertia(1.0);
+    let local_center_of_mass = cuboid.center_of_mass();
+    let test = physics.add_rigid_body(
+        nphysics3d::math::Isometry::new(nalgebra::Vector3::x() * 2.0, nalgebra::zero()),
+        local_inertia,
+        local_center_of_mass,
+    );
     
-    if DEBUG {logger.warning("Debug", "This is a debug build, beware of any bugs or issues")}
+    if DEBUG { logger.warning("Debug", "This is a debug build, beware of any bugs or issues") }
     logger.info("Welcome", format!("{} {} - Made by Friz64", NAME, VERSION));
     
     let mut old_frame = Instant::now();
@@ -156,6 +176,16 @@ fn main() {
             }
         });
 
+        // perform physics
+        pool.install(|| {
+            physics.set_timestep(delta_time);
+
+            physics.step();
+
+            println!("pos: {}", physics.rigid_body(test).unwrap().position().translation.vector.y);
+        });
+
+        // render ecs
         if pool.install(|| {
             renderer.draw(&mut logger, &pool, &delta_time, &ecs, &player, &objects, &config)
         }) { continue; };

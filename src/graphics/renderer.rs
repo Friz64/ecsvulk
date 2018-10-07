@@ -47,7 +47,7 @@ use ::specs::{
     World, Join, Entity,
 };
 use ::graphics::{
-    *, pipeline::PipelineAbstract,
+    *,
 };
 
 pub mod pipelines {
@@ -57,41 +57,10 @@ pub mod pipelines {
         [terrain, "shaders/terrain.vert", "shaders/terrain.frag", PipelineSettings {
             backfaceculling: true,
             wireframe: false,
-        }, (Vec3, (f32, f32, f32), &'a Model, Mat4, Mat4), 
-        |pipeline: &mut Self, logger: &mut Logger, pool: &ThreadPool, cmd_buffer: AutoCommandBufferBuilder, objects, state,
-            (pos, (pitch, yaw, roll), model, projection, view): Self::Data|
-        {
-            let mut cmd_buffer = cmd_buffer;
-
-            let model_mat = Renderer::model_matrix(pos, pitch, yaw, roll);
-
-            let set = pool.install(|| {
-                Arc::new(pipeline.sets_pool.next()
-                    .add_buffer(pipeline.cbp.next(vs::ty::Data {
-                            mvp: (projection * view * model_mat).into(),
-                            //view: view.into(),
-                            //model: model_mat.into(),
-                        }).unwrap_or_else(|err| match err {
-                            DeviceMemoryAllocError::OomError(err) => logger.error("BufferPoolNext", err),
-                            _ => logger.error("BufferPoolNext", err),
-                        })).unwrap_or_else(|err| logger.error("AddDescBuffer", err))
-                    .build().unwrap_or_else(|err| match err {
-                        PersistentDescriptorSetBuildError::OomError(err) => logger.error("CreateDescSet", err),
-                        _ => logger.error("CreateDescSet", err),
-                    })
-                )
-            });
-
-            if let Some((vertex_buf, normals_buf, index_buf)) = model.0.get_buffers(objects) {
-                cmd_buffer = cmd_buffer.draw_indexed(
-                    pipeline.pipeline.clone(), state,
-                    [vertex_buf.clone(), normals_buf.clone()].to_vec(),
-                    index_buf.clone(),
-                    set.clone(), ()
-                ).unwrap();
-            };
-
-            cmd_buffer
+        }],
+        [normal, "shaders/normal.vert", "shaders/normal.frag", PipelineSettings {
+            backfaceculling: true,
+            wireframe: true,
         }]
     );
 }
@@ -100,9 +69,11 @@ pub struct Renderer {
     pub focused: bool,
     pub cursor_grabbed: bool,
 
+    #[allow(unused)]
     instance: Arc<Instance>,
     pub surface: Arc<Surface<Window>>,
-
+    
+    #[allow(unused)]
     physical_device: usize, // lifetime issues
     device: Arc<Device>,
 
@@ -218,7 +189,7 @@ impl Renderer {
             error: true,
             warning: true,
             performance_warning: true,
-            information: false,
+            information: true,
             debug: true,
         };
 
@@ -737,9 +708,62 @@ impl Renderer {
             for (pos, PitchYawRoll(pitch, yaw, roll), model, pipeline) in (&positions, &pitchyawroll, &models, &pipelines).join() {
                 match pipeline.0 {
                     pipelines::Pipeline::terrain => {
-                        command_buffer = self.pipelines.terrain.draw(logger, pool, command_buffer, objects, &self.dynamic_state, 
-                            (pos.0, (*pitch, *yaw, *roll), model, projection, view)
-                        );
+                        let model_mat = Self::model_matrix(pos.0, *pitch, *yaw, *roll);
+                        let main_set = pool.install(|| {
+                            Arc::new(self.pipelines.terrain.sets_pool.next()
+                                .add_buffer(self.pipelines.terrain.cbp.next(pipelines::terrain::vs::ty::Data {
+                                        mvp: (projection * view * model_mat).into(),
+                                        //view: view.into(),
+                                        //model: model_mat.into(),
+                                    }).unwrap_or_else(|err| match err {
+                                        DeviceMemoryAllocError::OomError(err) => logger.error("BufferPoolNext", err),
+                                        _ => logger.error("BufferPoolNext", err),
+                                    })).unwrap_or_else(|err| logger.error("AddDescBuffer", err))
+                                .build().unwrap_or_else(|err| match err {
+                                    PersistentDescriptorSetBuildError::OomError(err) => logger.error("CreateDescSet", err),
+                                    _ => logger.error("CreateDescSet", err),
+                                })
+                            )
+                        });
+
+                        if let Some((vertex_buf, normals_buf, index_buf)) = model.0.get_buffers(objects) {
+                            command_buffer = command_buffer.draw_indexed(
+                                self.pipelines.terrain.pipeline.clone(),
+                                &self.dynamic_state,
+                                [vertex_buf.clone(), normals_buf.clone()].to_vec(),
+                                index_buf.clone(),
+                                main_set.clone(), ()
+                            ).unwrap();
+                        }
+                    },
+                    pipelines::Pipeline::normal => {
+                        let model_mat = Self::model_matrix(pos.0, *pitch, *yaw, *roll);
+                        let main_set = pool.install(|| {
+                            Arc::new(self.pipelines.normal.sets_pool.next()
+                                .add_buffer(self.pipelines.normal.cbp.next(pipelines::normal::vs::ty::Data {
+                                        mvp: (projection * view * model_mat).into(),
+                                        //view: view.into(),
+                                        //model: model_mat.into(),
+                                    }).unwrap_or_else(|err| match err {
+                                        DeviceMemoryAllocError::OomError(err) => logger.error("BufferPoolNext", err),
+                                        _ => logger.error("BufferPoolNext", err),
+                                    })).unwrap_or_else(|err| logger.error("AddDescBuffer", err))
+                                .build().unwrap_or_else(|err| match err {
+                                    PersistentDescriptorSetBuildError::OomError(err) => logger.error("CreateDescSet", err),
+                                    _ => logger.error("CreateDescSet", err),
+                                })
+                            )
+                        });
+
+                        if let Some((vertex_buf, normals_buf, index_buf)) = model.0.get_buffers(objects) {
+                            command_buffer = command_buffer.draw_indexed(
+                                self.pipelines.normal.pipeline.clone(),
+                                &self.dynamic_state,
+                                [vertex_buf.clone(), normals_buf.clone()].to_vec(),
+                                index_buf.clone(),
+                                main_set.clone(), ()
+                            ).unwrap();
+                        }
                     }
                 };
             }

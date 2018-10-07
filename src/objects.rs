@@ -141,7 +141,7 @@ fn load_obj(logger: &mut Logger, queue: &Arc<Queue>, name: &str) -> Option<Model
 }
 
 // actually does the work, specify the objs here
-gen_objects!(teapot, suzanne);
+gen_objects!(/*teapot, suzanne*/);
 
 pub fn gen_terrain(logger: &mut Logger, queue: &Arc<Queue>, scale: f32, x_off: f32, y_off: f32, noise_type: NoiseType) -> Object {
     let length: usize = 255;

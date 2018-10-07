@@ -1,10 +1,3 @@
-use logger::Logger;
-use objects::Objects;
-use ::vulkano::command_buffer::{
-    AutoCommandBufferBuilder, DynamicState,
-};
-use ::rayon::ThreadPool;
-
 #[derive(Copy, Clone)]
 pub struct PipelineSettings {
     pub backfaceculling: bool,
@@ -20,15 +13,8 @@ impl Default for PipelineSettings {
     }
 }
 
-pub trait PipelineAbstract<'a> {
-    type Data;
-
-    fn draw(&mut self, logger: &mut Logger, pool: &ThreadPool, cmd_buffer: AutoCommandBufferBuilder, objects: &Objects, state: &DynamicState, data: Self::Data)
-        -> AutoCommandBufferBuilder;
-}
-
 macro_rules! gen_pipelines {
-    ( $([$name:ident, $vert_src:expr, $frag_src:expr, $settings:expr, $data:ty, $func:expr]),* ) => {
+    ( $([$name:ident, $vert_src:expr, $frag_src:expr, $settings:expr]),* ) => {
         pub struct Pipelines {
             $(
                 pub $name: $name::Pipeline,
@@ -53,6 +39,7 @@ macro_rules! gen_pipelines {
             }
         }
 
+        #[allow(non_camel_case_types)]
         pub enum Pipeline {
             $(
                 $name,
@@ -129,18 +116,6 @@ macro_rules! gen_pipelines {
                         sets_pool,
                         settings,
                     }
-                }
-            }
-
-            impl<'a> PipelineAbstract<'a> for Pipeline {
-                type Data = $data;
-
-                fn draw(&mut self, logger: &mut Logger, pool: &ThreadPool, cmd_buffer: AutoCommandBufferBuilder, objects: &Objects, state: &DynamicState, data: Self::Data)
-                    -> AutoCommandBufferBuilder
-                {
-                    let func = $func;
-
-                    func(self, logger, pool, cmd_buffer, objects, state, data)
                 }
             }
         })*
