@@ -6,7 +6,7 @@ layout(location = 0) in vec3 v_pos;
 layout(location = 1) in vec3 v_normal;
 
 void main() {
-    vec3 color = v_normal;
+    vec3 color = normalize(v_normal);
 
     if (v_pos.y < 2.75) {
         color = vec3(0.0, 0.12, 0.58) * (1 - (v_pos.y - 2.75) / 2.75);

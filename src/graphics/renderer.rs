@@ -280,14 +280,6 @@ impl Renderer {
         (device, queue)
     }
 
-    fn dimensions(logger: &mut Logger, surface: &Arc<Surface<Window>>) -> [u32; 2] {
-        let dim: (u32, u32) = (*surface).window().get_inner_size()
-            .unwrap_or_else(|| logger.error("GetWindowSize", "Failed to get the current window dimensions"))
-            .into();
-        
-        [dim.0, dim.1]
-    }
-
     fn swap_chain(
         logger: &mut Logger,
         instance: &Arc<Instance>,
@@ -326,7 +318,7 @@ impl Renderer {
             }
         };
 
-        let dimensions = Self::dimensions(logger, surface);
+        let dimensions = capabilities.current_extent.unwrap_or([800, 600]);
 
         let image_count = {
             let mut count = capabilities.min_image_count + 1;
@@ -519,7 +511,13 @@ impl Renderer {
     }
 
     fn recreate_swap_chain(&mut self, logger: &mut Logger) -> bool {
-        let dimensions = Self::dimensions(logger, &self.surface);
+        let physical_device = PhysicalDevice::from_index(&self.instance, self.physical_device)
+            .unwrap_or_else(|| logger.error("ReconstructPhysical", "Failed to reconstruct physical device from earlier obtained index"));
+        let dimensions = self.surface.capabilities(physical_device)
+            .unwrap_or_else(|err| match err {
+                CapabilitiesError::OomError(err) => logger.error("SurfaceCapabilities", err),
+                _ => logger.error("SurfaceCapabilities", err),
+            }).current_extent.unwrap_or([800, 600]);
 
         let (swap_chain, swap_chain_images) = match self.swap_chain.recreate_with_dimension(dimensions) {
             Ok(r) => r,
@@ -631,7 +629,10 @@ impl Renderer {
 
     pub fn draw(&mut self, logger: &mut Logger, pool: &ThreadPool, delta_time: &f32, ecs: &World, player: &Entity, objects: &Objects, config: &Config) -> bool {
         if pool.install(|| {
-            if Self::dimensions(logger, &self.surface) == [0, 0] {
+            // windows resizes window to 0, 0 upon minimizing
+            let dimensions: (u32, u32) = self.surface.window().get_inner_size()
+                .unwrap_or_else(|| logger.error("GetWindowSize", "Failed to get the current window dimensions")).into();
+            if dimensions == (0, 0) {
                 return true
             };
 

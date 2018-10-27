@@ -69,7 +69,7 @@ const VERSION: Version = Version {
 
 fn main() {
     // comment and uncomment to recompile shaders
-    //assert!(true);
+    assert!(true);
 
     init();
     let mut logger = Logger::new("log.txt");
@@ -122,7 +122,7 @@ fn main() {
         });
 
         // handle events
-        events_loop.poll_events(|event| pool.install(|| match event {
+        events_loop.poll_events(|event| match event {
             Event::WindowEvent {event, ..} => match event {
                 WindowEvent::KeyboardInput {input: KeyboardInput {virtual_keycode, state, ..}, ..} => {
                     config.update_keys(virtual_keycode, state);
@@ -160,7 +160,7 @@ fn main() {
                 _ => (),
             },
             _ => (),
-        }));
+        });
         
         // updates down, hold, up and none
         pool.install(|| config.update_status());
@@ -180,12 +180,14 @@ fn main() {
         pool.install(|| {
             physics.set_timestep(delta_time);
 
-            physics.step();
+            //physics.step();
 
-            println!("pos: {}", physics.rigid_body(test).unwrap().position().translation.vector.y);
+            //println!("pos: {}", physics.rigid_body(test).unwrap().position().translation.vector.y);
+            
+            println!("fps: {}", 1.0 / delta_time);
         });
 
-        // render ecs
+        // render
         if pool.install(|| {
             renderer.draw(&mut logger, &pool, &delta_time, &ecs, &player, &objects, &config)
         }) { continue; };
