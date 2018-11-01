@@ -16,9 +16,12 @@ extern crate simdnoise;
 extern crate nphysics3d;
 extern crate ncollide3d;
 extern crate nalgebra;
+extern crate log;
+extern crate ansi_term;
 
 #[macro_use]
 mod helper;
+#[macro_use]
 mod logger;
 mod config;
 mod graphics;
@@ -54,6 +57,7 @@ use rayon::{
 use simdnoise::{
     NoiseType,
 };
+use log::{info, debug, error, warn, trace};
 
 #[cfg(debug_assertions)]
 const DEBUG: bool = true;
@@ -72,18 +76,19 @@ fn main() {
     assert!(true);
 
     init();
-    let mut logger = Logger::new("log.txt");
+    Logger::init(&format!("{}.log", NAME));
+    
     let pool = ThreadPoolBuilder::new().build()
-        .unwrap_or_else(|err| logger.error("PoolCreate", err));
-    let mut config = configloader::Config::new(&mut logger, "config.toml");
+        .unwrap_or_else(|err| error_close!("{}", err));
+    let mut config = configloader::Config::new("config.toml");
     let mut events_loop = winit::EventsLoop::new();
-    let (mut renderer, _debug) = Renderer::new(&mut logger, &events_loop);
-    let objects = Objects::load(&mut logger, &renderer.queue);
+    let (mut renderer, _debug) = Renderer::new(&events_loop);
+    let objects = Objects::load(&renderer.queue);
     let mut ecs = ecs::init();
     let mut physics = create_physics();
     let player = entities::create_player(&mut ecs, Vec3::new(10.0, 10.0, 125.0), 0.0, 0.0);
 
-    let terrain = objects::gen_terrain(&mut logger, &renderer.queue, 10.0, 0.0, 0.0, NoiseType::Fbm {
+    let terrain = objects::gen_terrain(&renderer.queue, 10.0, 0.0, 0.0, NoiseType::Fbm {
         freq: 0.11,
         lacunarity: 0.5,
         gain: 2.0,
@@ -106,8 +111,8 @@ fn main() {
         local_center_of_mass,
     );
     
-    if DEBUG { logger.warning("Debug", "This is a debug build, beware of any bugs or issues") }
-    logger.info("Welcome", format!("{} {} - Made by Friz64", NAME, VERSION));
+    if DEBUG { warn!("This is a debug build, beware of any bugs or issues") }
+    info!("{} {} - Made by Friz64", NAME, VERSION);
     
     let mut old_frame = Instant::now();
     let mut running = true;
@@ -142,7 +147,7 @@ fn main() {
                     // update player pyr
                     let mut pyr_storage = ecs.write_storage::<PitchYawRoll>();
                     let mut player_pyr = pyr_storage.get_mut(player)
-                        .unwrap_or_else(|| logger.error("PlayerController", "Invalid Player Entity; missing Pos Component"));
+                        .unwrap_or_else(|| ::error_close!("Invalid Player Entity; missing Pos Component"));
                     
                     let mouse_speed = config.controls.sensitivity.mouse_speed * 0.85;
 
@@ -170,7 +175,7 @@ fn main() {
                 renderer.cursor_grabbed = !renderer.cursor_grabbed;
 
                 renderer.surface.window().grab_cursor(renderer.cursor_grabbed)
-                    .unwrap_or_else(|err| logger.error("GrabCursor", err));
+                    .unwrap_or_else(|err| ::error_close!("{}", err));
 
                 renderer.surface.window().hide_cursor(renderer.cursor_grabbed);
             }
@@ -184,17 +189,17 @@ fn main() {
 
             //println!("pos: {}", physics.rigid_body(test).unwrap().position().translation.vector.y);
             
-            println!("fps: {}", 1.0 / delta_time);
+            //println!("fps: {}", 1.0 / delta_time);
         });
 
         // render
         if pool.install(|| {
-            renderer.draw(&mut logger, &pool, &delta_time, &ecs, &player, &objects, &config)
+            renderer.draw(&pool, &delta_time, &ecs, &player, &objects, &config)
         }) { continue; };
 
         // sets scroll back to none
         pool.install(|| config.update_scroll(0.0));
     };
 
-    exit(&mut logger, 0);
+    info!("Exiting...");
 }

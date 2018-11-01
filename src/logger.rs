@@ -1,85 +1,96 @@
 use chrono::{DateTime, Local, Timelike};
-use std::fs::File;
-use std::fmt;
-use std::io::Write;
+use log::{Log, Metadata, Record, Level, LevelFilter};
+use std::{sync::Mutex, fs::{File, OpenOptions}, io::Write};
+use ansi_term::Color::*;
 
-pub enum LogType {
-    INFO,
-    WARNING,
-    ERROR,
-}
-
-impl LogType {
-    pub fn gen_msg<T>(self, prefix: &str, msg: T) -> String
-        where T: fmt::Display
-    {
-        let name = match self {
-            LogType::INFO =>       "INFO",
-            LogType::WARNING => "WARNING",
-            LogType::ERROR =>     "ERROR",
-        };
-
-        format!("[{}] - {}: [{}] {}", format_time(Local::now()), name, prefix, msg)
-    }
+#[macro_export]
+macro_rules! error_close {
+    ($($arg:tt)*) => {{
+        log::error!($($arg)*);
+        log::info!("Exiting...");
+        std::process::exit(1)
+    }};
 }
 
 pub struct Logger {
-    pub file: Option<File>,
+    file: Option<Mutex<File>>,
 }
 
 impl Logger {
-    pub fn new(logpath: &str) -> Self {
-        let path = format!("./{}/{}", ::NAME, logpath);
-        let file = File::create(&path)
-            .map_err(|err| {
-                eprintln!("{}", LogType::WARNING.gen_msg("LogFileCreate", err.to_string() + " - NOT WRITING LOG TO FILE"))
-            }).ok();
+    pub fn init(path: &str) {
+        let file = OpenOptions::new()
+            .write(true)
+            .create(true)
+            .truncate(true)
+            .open(format!("./{}/{}", ::NAME, path));
 
-        let mut logger = Logger {
-            file
+        if let Err(err) = &file {
+            eprintln!("{}", Red.paint(format!("Not logging to {} - {}", path, err)));
+        }
+
+        let logger = Logger {
+            file: file.ok().map(|option| Mutex::new(option)),
         };
-        logger.info("Logger", "Logger initialized");
-        logger
+
+        log::set_boxed_logger(Box::new(logger)).unwrap();
+        log::set_max_level(LevelFilter::Trace);
+    }
+}
+
+impl Log for Logger {
+    fn enabled(&self, metadata: &Metadata) -> bool {
+        metadata.level() <= Level::Trace
     }
 
-    pub fn error<T>(&mut self, prefix: &str, msg: T) -> !
-        where T: fmt::Display
-    {
-        let err_msg = LogType::ERROR.gen_msg(prefix, msg);
-        println!("{}", err_msg);
-        if let Some(file) = &mut self.file {
-            file.write(format!("{}\n", err_msg).as_bytes())
-                .map_err(|err| {
-                    eprintln!("{}", ::LogType::WARNING.gen_msg("LogFileWrite", err))
-                }).ok();;
+    fn log(&self, record: &Record) {
+        let blacklist = ["winit"];
+
+        let target = record.target();
+        for item in blacklist.iter() {
+            if target.contains(item) {
+                return;
+            }
         }
-        
-        ::exit(self, 1)
-    }
 
-    pub fn warning<T>(&mut self, prefix: &str, msg: T)
-        where T: fmt::Display
-    {
-        let err_msg = LogType::WARNING.gen_msg(prefix, msg);
-        println!("{}", err_msg);
-        if let Some(file) = &mut self.file {
-            file.write(format!("{}\n", err_msg).as_bytes())
-                .map_err(|err| {
-                    println!("{}", ::LogType::WARNING.gen_msg("LogFileWrite", err))
-                }).ok();;
+        if self.enabled(record.metadata()) {
+            let time = format_time(Local::now());
+
+            if let Some(file) = &self.file {
+                if let Ok(mut file) = file.lock() {
+                    writeln!(file, "[{}] {}{} - {}: {}",
+                        time,
+                        record.target(),
+                        record.line().map(|option| format!(":{}", option)).unwrap_or_default(),
+                        record.level(),
+                        record.args(),
+                    );
+                }
+            }
+
+            let level = match record.level() {
+                Level::Error => Red.paint("ERROR"),
+                Level::Warn => Yellow.paint("WARN"),
+                Level::Info => Green.paint("INFO"),
+                Level::Debug => Purple.paint("DEBUG"),
+                Level::Trace => Cyan.paint("TRACE"),
+            };
+
+            // https://upload.wikimedia.org/wikipedia/commons/1/15/Xterm_256color_chart.svg
+            println!("[{}] {}{} - {}: {}",
+                Fixed(245).paint(time),
+                record.target(),
+                record.line().map(|option| format!(":{}", Fixed(172).paint(option.to_string()))).unwrap_or_default(),
+                level,
+                record.args(),
+            );
         }
     }
 
-    pub fn info<T>(&mut self, prefix: &str, msg: T)
-        where T: fmt::Display
-    {
-        let err_msg = LogType::INFO.gen_msg(prefix, msg);
-        println!("{}", err_msg);
-        if let Some(file) = &mut self.file {
-            file.write(format!("{}\n", err_msg).as_bytes())
-                .map_err(|err| {
-                    println!("{}", ::LogType::WARNING.gen_msg("LogFileWrite", err))
-                }).ok();;
+    fn flush(&self) {
+        if let Some(file) = &self.file {
+            if let Ok(mut file) = file.lock() {
+                file.flush().ok();
+            }
         }
     }
 }

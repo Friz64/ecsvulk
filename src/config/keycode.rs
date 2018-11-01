@@ -1,7 +1,6 @@
 use ::winit::{
     VirtualKeyCode, MouseButton, ElementState,
 };
-use logger::Logger;
 
 #[derive(Debug)]
 pub struct Input {
@@ -113,9 +112,9 @@ impl Input {
 
         print('"' + output.lower() + '"' + " => InputType::Key(VirtualKeyCode::" + line + "),")
     */
-    pub fn from_str(logger: &mut Logger, field: Option<String>, location: &str, default: &str) -> Self {
+    pub fn from_str(field: Option<String>, location: &str, default: &str) -> Self {
         let input = field.unwrap_or_else(|| {
-            logger.warning("ConfigChecker", format!("{} is invalid, using default", location));
+            ::warn!("{} is invalid, using default", location);
             default.to_owned()
         });
 
@@ -281,9 +280,9 @@ impl Input {
         };
 
         if input_type == InputType::None {
-            logger.warning("ConfigChecker", format!("{} - \"{}\" isn't recognized, using default", location, input));
+            ::warn!("{} - \"{}\" isn't recognized, using default", location, input);
 
-            input_type = Self::from_str(logger, Some(default.to_owned()), location, default).input;
+            input_type = Self::from_str(Some(default.to_owned()), location, default).input;
         }
         
         Input {

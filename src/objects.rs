@@ -1,4 +1,5 @@
-use logger::Logger;
+use log::{info, warn, error};
+//use ::logger::error_close;
 use obj;
 use std::{
     io::BufReader,
@@ -35,14 +36,14 @@ macro_rules! gen_objects {
         }
 
         impl Objects {
-            pub fn load(logger: &mut Logger, queue: &Arc<Queue>) -> Self {
+            pub fn load(queue: &Arc<Queue>) -> Self {
                 let objs = Self {
                     $(
                         $name: load_obj(logger, queue, stringify!($name)).unwrap_or_default(),
                     )*
                 };
 
-                logger.info("ObjLoader", "Objs loaded");
+                info!("Objs loaded");
 
                 objs
             }
@@ -103,14 +104,14 @@ impl Default for ModelBuffers {
     }
 }
 
-fn load_obj(logger: &mut Logger, queue: &Arc<Queue>, name: &str) -> Option<ModelBuffers> {
+fn load_obj(queue: &Arc<Queue>, name: &str) -> Option<ModelBuffers> {
     let path = format!("./{}/models/{}.obj", ::NAME, name);
 
     let input = BufReader::new(
         match File::open(path) {
             Ok(res) => res,
             Err(err) => {
-                logger.warning("OpenOBJ", format!("Failed to open {}.obj: {}", name, err));
+                warn!("Failed to open {}.obj: {}", name, err);
                 return None;
             },
         }
@@ -119,7 +120,7 @@ fn load_obj(logger: &mut Logger, queue: &Arc<Queue>, name: &str) -> Option<Model
     let obj: obj::Obj<obj::Vertex> = match obj::load_obj(input) {
         Ok(res) => res,
         Err(err) => {
-            logger.warning("LoadOBJ", format!("Failed to load {}.obj: {}", name, err));
+            warn!("Failed to load {}.obj: {}", name, err);
             return None;
         },
     };
@@ -134,16 +135,16 @@ fn load_obj(logger: &mut Logger, queue: &Arc<Queue>, name: &str) -> Option<Model
     let indices = obj.indices;
 
     Some(ModelBuffers {
-        vertex_buf: Some(Renderer::vertex_buffer(logger, queue, &vertices)),
-        normals_buf: Some(Renderer::normals_buffer(logger, queue, &normals)),
-        index_buf: Some(Renderer::index_buffer(logger, queue, &indices)),
+        vertex_buf: Some(Renderer::vertex_buffer(queue, &vertices)),
+        normals_buf: Some(Renderer::normals_buffer(queue, &normals)),
+        index_buf: Some(Renderer::index_buffer(queue, &indices)),
     })
 }
 
 // actually does the work, specify the objs here
 gen_objects!(/*teapot, suzanne*/);
 
-pub fn gen_terrain(logger: &mut Logger, queue: &Arc<Queue>, scale: f32, x_off: f32, y_off: f32, noise_type: NoiseType) -> Object {
+pub fn gen_terrain(queue: &Arc<Queue>, scale: f32, x_off: f32, y_off: f32, noise_type: NoiseType) -> Object {
     let length: usize = 255;
     let range = length.pow(2);
 
@@ -207,12 +208,12 @@ pub fn gen_terrain(logger: &mut Logger, queue: &Arc<Queue>, scale: f32, x_off: f
     }
 
     let result = Object::Custom(ModelBuffers {
-        vertex_buf: Some(Renderer::vertex_buffer(logger, queue, &vertices)),
-        normals_buf: Some(Renderer::normals_buffer(logger, queue, &normals)),
-        index_buf: Some(Renderer::index_buffer(logger, queue, &indices)),
+        vertex_buf: Some(Renderer::vertex_buffer(queue, &vertices)),
+        normals_buf: Some(Renderer::normals_buffer(queue, &normals)),
+        index_buf: Some(Renderer::index_buffer(queue, &indices)),
     });
 
-    logger.info("TerrainGen", format!("Terrain generated with length {}", length));
+    info!("Terrain generated with length {}", length);
 
     result
 }

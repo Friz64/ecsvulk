@@ -2,9 +2,6 @@ use std::{
     sync::Arc,
     boxed::Box,
 };
-use logger::{
-    Logger, LogType,
-};
 use objects::{
     Objects,
 };
@@ -49,6 +46,7 @@ use ::specs::{
 use ::graphics::{
     *,
 };
+use log::warn;
 
 pub mod pipelines {
     use super::*;
@@ -96,35 +94,35 @@ pub struct Renderer {
 }
 
 impl Renderer {
-    pub fn new(logger: &mut Logger, events_loop: &EventsLoop) -> (Self, Option<DebugCallback>) {
+    pub fn new(events_loop: &EventsLoop) -> (Self, Option<DebugCallback>) {
         let required_device_extensions = DeviceExtensions {
             khr_swapchain: true,
             .. DeviceExtensions::none()
         };
 
-        let instance = Self::instance(logger);
+        let instance = Self::instance();
         let debug_callback = Self::callback(&instance);
 
-        let surface = Self::surface(logger, events_loop, &instance);
+        let surface = Self::surface(events_loop, &instance);
 
-        let (physical_device, queue_family) = Self::physical_device(logger, &instance, &surface, &required_device_extensions);
-        let (device, queue) =  Self::logical_device(logger, &instance, &required_device_extensions, physical_device, queue_family);
+        let (physical_device, queue_family) = Self::physical_device(&instance, &surface, &required_device_extensions);
+        let (device, queue) =  Self::logical_device(&instance, &required_device_extensions, physical_device, queue_family);
 
-        let (swap_chain, swap_chain_images) = Self::swap_chain(logger, &instance, &surface, physical_device, &device, &queue);
+        let (swap_chain, swap_chain_images) = Self::swap_chain(&instance, &surface, physical_device, &device, &queue);
 
-        let render_pass = Self::render_pass(logger, &device, swap_chain.format());
+        let render_pass = Self::render_pass(&device, swap_chain.format());
 
-        let pipelines = pipelines::Pipelines::new(logger, &device, &render_pass);
+        let pipelines = pipelines::Pipelines::new(&device, &render_pass);
 
-        let depth_buffer = Self::depth_buffer(logger, &device, swap_chain.dimensions())
-            .unwrap_or_else(|| logger.error("CreateDepthBuffer", "Invalid dimensions"));
-        let swap_chain_framebuffers = Self::framebuffers(logger, &swap_chain_images, &render_pass, &depth_buffer);
+        let depth_buffer = Self::depth_buffer(&device, swap_chain.dimensions())
+            .unwrap_or_else(|| ::error_close!("Invalid dimensions"));
+        let swap_chain_framebuffers = Self::framebuffers(&swap_chain_images, &render_pass, &depth_buffer);
 
         let dynamic_state = Self::dynamic_state(swap_chain.dimensions());
 
         let prev_frame = Some(Box::new(sync::now(device.clone())) as Box<_>);
 
-        logger.info("Renderer", "Renderer initialized");
+        ::info!("Renderer initialized");
 
         (Renderer {
             focused: true,
@@ -155,11 +153,11 @@ impl Renderer {
         }, debug_callback)
     }
 
-    fn instance(logger: &mut Logger) -> Arc<Instance> {
+    fn instance() -> Arc<Instance> {
         let layer = "VK_LAYER_LUNARG_standard_validation";
 
         let validation_supported = instance::layers_list()
-            .unwrap_or_else(|err| logger.error("GetLayersList", err))
+            .unwrap_or_else(|err| ::error_close!("{}", err))
             .map(|layer| layer.name().to_owned())
             .any(|name| name == layer);
 
@@ -177,10 +175,11 @@ impl Renderer {
             true =>  instance::Instance::new(Some(&app_infos), &extensions, Some(layer)),
             false => instance::Instance::new(Some(&app_infos), &extensions, None)
         };
+
         instance.unwrap_or_else(|err| match err {
-            InstanceCreationError::LoadingError(err) => logger.error("InstanceCreate", err),
-            InstanceCreationError::OomError(err) => logger.error("InstanceCreate", err),
-            _ => logger.error("InstanceCreate", err),
+            InstanceCreationError::LoadingError(err) => ::error_close!("{}", err),
+            InstanceCreationError::OomError(err) => ::error_close!("{}", err),
+            _ => ::error_close!("{}", err),
         })
     }
 
@@ -194,12 +193,11 @@ impl Renderer {
         };
 
         DebugCallback::new(&instance, types, |msg| {
-            println!("{}", LogType::WARNING.gen_msg(msg.layer_prefix, msg.description));
+            warn!("{} - {}", msg.layer_prefix, msg.description);
         }).ok()
     }
 
     fn surface(
-        logger: &mut Logger,
         events_loop: &EventsLoop,
         instance: &Arc<Instance>
     ) -> Arc<Surface<Window>> {
@@ -207,13 +205,12 @@ impl Renderer {
             .with_title(::NAME.to_owned() + " " + &::VERSION.to_string())
             .build_vk_surface(&events_loop, instance.clone())
             .unwrap_or_else(|err| match err {
-                    CreationError::SurfaceCreationError(err) => logger.error("WindowCreate", err),
-                    CreationError::WindowCreationError(err) => logger.error("WindowCreate", err),
+                    CreationError::SurfaceCreationError(err) => ::error_close!("{}", err),
+                    CreationError::WindowCreationError(err) => ::error_close!("{}", err),
             })
     }
 
     fn physical_device(
-        logger: &mut Logger,
         instance: &Arc<Instance>,
         surface: &Arc<Surface<Window>>,
         required_extensions: &DeviceExtensions,
@@ -233,8 +230,8 @@ impl Renderer {
                 let swap_chain_supported = if extensions_supported {
                     let capabilities = surface.capabilities(device)
                         .unwrap_or_else(|err| match err {
-                            CapabilitiesError::OomError(err) => logger.error("SurfaceCapabilities", err),
-                            _ => logger.error("SurfaceCapabilities", err),
+                            CapabilitiesError::OomError(err) => ::error_close!("{}", err),
+                            _ => ::error_close!("{}", err),
                         });
                     
                     !capabilities.supported_formats.is_empty() &&       // at least one format supported
@@ -243,27 +240,26 @@ impl Renderer {
                 
                 extensions_supported && swap_chain_supported
             })
-            .unwrap_or_else(|| logger.error("FindGPU", "No suitable GPU found"));
+            .unwrap_or_else(|| ::error_close!("No suitable GPU found"));
         let family = family
-            .unwrap_or_else(|| logger.error("FindFamily", "No suitable QueueFamily found"))
+            .unwrap_or_else(|| ::error_close!("No suitable QueueFamily found"))
             .id();
 
         (device, family)
     }
     
     fn logical_device(
-        logger: &mut Logger,
         instance: &Arc<Instance>,
         required_extensions: &DeviceExtensions,
         physical_device_index: usize,
         queue_family: u32,
     ) -> (Arc<Device>, Arc<Queue>) {
         let physical_device = PhysicalDevice::from_index(instance, physical_device_index)
-            .unwrap_or_else(|| logger.error("ReconstructPhysical", "Failed to reconstruct physical device from earlier obtained index"));
+            .unwrap_or_else(|| ::error_close!("Failed to reconstruct physical device from earlier obtained index"));
 
         let queue_family = (
             physical_device.queue_families().nth(queue_family as usize)
-                .unwrap_or_else(|| logger.error("ReconstructFamily", "Failed to reconstruct queue family from earlier obtained index")),
+                .unwrap_or_else(|| ::error_close!("Failed to reconstruct queue family from earlier obtained index")),
             1.0,
         );
 
@@ -272,16 +268,15 @@ impl Renderer {
 
         let (device, mut queues) = Device::new(physical_device, &features,
             required_extensions, [queue_family].iter().cloned())
-            .unwrap_or_else(|err| logger.error("CreateDevice", err));
+            .unwrap_or_else(|err| ::error_close!("{}", err));
 
         let queue = queues.next()
-            .unwrap_or_else(|| logger.error("GetQueues", "No queues found"));
+            .unwrap_or_else(|| ::error_close!("No queues found"));
 
         (device, queue)
     }
 
     fn swap_chain(
-        logger: &mut Logger,
         instance: &Arc<Instance>,
         surface: &Arc<Surface<Window>>,
         physical_device_index: usize,
@@ -289,11 +284,11 @@ impl Renderer {
         queue: &Arc<Queue>,
     ) -> (Arc<Swapchain<Window>>, Vec<Arc<SwapchainImage<Window>>>) {
         let physical_device = PhysicalDevice::from_index(instance, physical_device_index)
-            .unwrap_or_else(|| logger.error("ReconstructPhysical", "Failed to reconstruct physical device from earlier obtained index"));
+            .unwrap_or_else(|| ::error_close!("Failed to reconstruct physical device from earlier obtained index"));
         let capabilities = surface.capabilities(physical_device)
             .unwrap_or_else(|err| match err {
-                CapabilitiesError::OomError(err) => logger.error("SurfaceCapabilities", err),
-                _ => logger.error("SurfaceCapabilities", err),
+                CapabilitiesError::OomError(err) => ::error_close!("{}", err),
+                _ => ::error_close!("{}", err),
             });
 
         let surface_format = {
@@ -313,10 +308,12 @@ impl Renderer {
             if present_modes.mailbox {
                 PresentMode::Mailbox
             } else {
-                logger.warning("PresentMode", "Using VSync (Fifo), because Mailbox isn't supported");
+                warn!("Using VSync (Fifo), because Mailbox isn't supported");
                 PresentMode::Fifo
             }
         };
+
+        let present_mode = PresentMode::Immediate;
 
         let dimensions = capabilities.current_extent.unwrap_or([800, 600]);
 
@@ -368,13 +365,12 @@ impl Renderer {
             // Previous swapchain.
             None,
         ).unwrap_or_else(|err| match err {
-            SwapchainCreationError::OomError(err) => logger.error("CreateSwapchain", err),
-            _ => logger.error("CreateSwapchain", err),
+            SwapchainCreationError::OomError(err) => ::error_close!("{}", err),
+            _ => ::error_close!("{}", err),
         })
     }
 
     fn render_pass(
-        logger: &mut Logger,
         device: &Arc<Device>,
         color_format: Format
     ) -> Arc<RenderPassAbstract + Send + Sync> {
@@ -398,13 +394,12 @@ impl Renderer {
                 depth_stencil: {depth}
             }
         ).unwrap_or_else(|err| match err {
-            RenderPassCreationError::OomError(err) => logger.error("CreateRenderPass", err),
-            _ => logger.error("CreateRenderPass", err),
+            RenderPassCreationError::OomError(err) => ::error_close!("{}", err),
+            _ => ::error_close!("{}", err),
         }))
     }
 
     fn depth_buffer(
-        logger: &mut Logger,
         device: &Arc<Device>,
         dimensions: [u32; 2],
     ) -> Option<Arc<AttachmentImage<D16Unorm>>> {
@@ -416,19 +411,18 @@ impl Renderer {
         .map(|val| Some(val))
         .unwrap_or_else(|err| match err {
             ImageCreationError::AllocError(err) => match err {
-                DeviceMemoryAllocError::OomError(err) => logger.error("CreateDepthBuffer", err),
-                _ => logger.error("CreateDepthBuffer", err),
+                DeviceMemoryAllocError::OomError(err) => ::error_close!("{}", err),
+                _ => ::error_close!("{}", err),
             },
             ImageCreationError::UnsupportedDimensions { dimensions } => match dimensions {
                 ImageDimensions::Dim2d { .. } => None,
-                _ => logger.error("DepthDimUnsupported", err),
+                _ => ::error_close!("{}", err),
             },
-            _ => logger.error("CreateDepthBuffer", err),
+            _ => ::error_close!("{}", err),
         })
     }
 
     fn framebuffers(
-        logger: &mut Logger,
         swap_chain_images: &Vec<Arc<SwapchainImage<Window>>>,
         render_pass: &Arc<RenderPassAbstract + Send + Sync>,
         depth_buffer: &Arc<AttachmentImage<D16Unorm>>
@@ -438,59 +432,59 @@ impl Renderer {
                 let framebuffer: Arc<FramebufferAbstract + Send + Sync> = Arc::new(Framebuffer::start(render_pass.clone())
                     .add(image.clone())
                         .unwrap_or_else(|err| match err {
-                            FramebufferCreationError::OomError(err) => logger.error("AddSwapchainImage", err),
-                            _ => logger.error("AddSwapchainImage", err),
+                            FramebufferCreationError::OomError(err) => ::error_close!("{}", err),
+                            _ => ::error_close!("{}", err),
                         })
                     .add(depth_buffer.clone())
                         .unwrap_or_else(|err| match err {
-                            FramebufferCreationError::OomError(err) => logger.error("AddDepthBuffer", err),
-                            _ => logger.error("AddDepthBuffer", err),
+                            FramebufferCreationError::OomError(err) => ::error_close!("{}", err),
+                            _ => ::error_close!("{}", err),
                         })
                     .build()
                     .unwrap_or_else(|err| match err {
-                        FramebufferCreationError::OomError(err) => logger.error("CreateFramebuffer", err),
-                        FramebufferCreationError::AttachmentDimensionsIncompatible {expected, obtained} => logger.error("CreateFramebuffer", 
-                            format!("{}; expected {:?}, got {:?}", err, expected, obtained)),
-                        FramebufferCreationError::AttachmentsCountMismatch {expected, obtained} => logger.error("CreateFramebuffer",
-                            format!("{}; expected {}, got {}", err, expected, obtained)),
-                        _ => logger.error("CreateFramebuffer", err),
+                        FramebufferCreationError::OomError(err) => ::error_close!("{}", err),
+                        FramebufferCreationError::AttachmentDimensionsIncompatible {expected, obtained} =>
+                            ::error_close!("{}; expected {:?}, got {:?}", err, expected, obtained),
+                        FramebufferCreationError::AttachmentsCountMismatch {expected, obtained} =>
+                            ::error_close!("{}; expected {}, got {}", err, expected, obtained),
+                        _ => ::error_close!("{}", err),
                     })
                 ); framebuffer
             }
         ).collect::<Vec<_>>()
     }
 
-    pub fn vertex_buffer(logger: &mut Logger, queue: &Arc<Queue>, vertices: &Vec<Vertex>) -> Arc<BufferAccess + Send + Sync> {
+    pub fn vertex_buffer(queue: &Arc<Queue>, vertices: &Vec<Vertex>) -> Arc<BufferAccess + Send + Sync> {
         let (buffer, future) = ImmutableBuffer::from_iter(
             vertices.iter().cloned(), BufferUsage::vertex_buffer(), 
             queue.clone())
             .unwrap_or_else(|err| match err {
-                DeviceMemoryAllocError::OomError(err) => logger.error("CreateVertexBuffer", err),
-                _ => logger.error("CreateVertexBuffer", err),
+                DeviceMemoryAllocError::OomError(err) => ::error_close!("{}", err),
+                _ => ::error_close!("{}", err),
             });
         future.flush().unwrap();
         buffer
     }
 
-    pub fn normals_buffer(logger: &mut Logger, queue: &Arc<Queue>, normals: &Vec<Normal>) -> Arc<BufferAccess + Send + Sync> {
+    pub fn normals_buffer(queue: &Arc<Queue>, normals: &Vec<Normal>) -> Arc<BufferAccess + Send + Sync> {
         let (buffer, future) = ImmutableBuffer::from_iter(
             normals.iter().cloned(), BufferUsage::vertex_buffer(), 
             queue.clone())
             .unwrap_or_else(|err| match err {
-                DeviceMemoryAllocError::OomError(err) => logger.error("CreateNormalsBuffer", err),
-                _ => logger.error("CreateNormalsBuffer", err),
+                DeviceMemoryAllocError::OomError(err) => ::error_close!("{}", err),
+                _ => ::error_close!("{}", err),
             });
         future.flush().unwrap();
         buffer
     }
 
-    pub fn index_buffer(logger: &mut Logger, queue: &Arc<Queue>, indices: &Vec<u16>) -> Arc<TypedBufferAccess<Content=[u16]> + Send + Sync> {
+    pub fn index_buffer(queue: &Arc<Queue>, indices: &Vec<u16>) -> Arc<TypedBufferAccess<Content=[u16]> + Send + Sync> {
         let (buffer, future) = ImmutableBuffer::from_iter(
             indices.iter().cloned(), BufferUsage::index_buffer(), 
             queue.clone())
             .unwrap_or_else(|err| match err {
-                DeviceMemoryAllocError::OomError(err) => logger.error("CreateIndexBuffer", err),
-                _ => logger.error("CreateIndexBuffer", err),
+                DeviceMemoryAllocError::OomError(err) => ::error_close!("{}", err),
+                _ => ::error_close!("{}", err),
             });
         future.flush().unwrap();
         buffer
@@ -510,33 +504,34 @@ impl Renderer {
         }
     }
 
-    fn recreate_swap_chain(&mut self, logger: &mut Logger) -> bool {
+    fn recreate_swap_chain(&mut self) -> bool {
         let physical_device = PhysicalDevice::from_index(&self.instance, self.physical_device)
-            .unwrap_or_else(|| logger.error("ReconstructPhysical", "Failed to reconstruct physical device from earlier obtained index"));
+            .unwrap_or_else(|| ::error_close!("Failed to reconstruct physical device from earlier obtained index"));
+
         let dimensions = self.surface.capabilities(physical_device)
             .unwrap_or_else(|err| match err {
-                CapabilitiesError::OomError(err) => logger.error("SurfaceCapabilities", err),
-                _ => logger.error("SurfaceCapabilities", err),
+                CapabilitiesError::OomError(err) => ::error_close!("{}", err),
+                _ => ::error_close!("{}", err),
             }).current_extent.unwrap_or([800, 600]);
 
         let (swap_chain, swap_chain_images) = match self.swap_chain.recreate_with_dimension(dimensions) {
             Ok(r) => r,
-            Err(SwapchainCreationError::OomError(err)) => logger.error("CreateSwapchain", err),
+            Err(SwapchainCreationError::OomError(err)) => ::error_close!("{}", err),
             Err(SwapchainCreationError::UnsupportedDimensions) => return true,
-            Err(err) => logger.error("CreateSwapchain", err),
+            Err(err) => ::error_close!("{}", err),
         };
         self.swap_chain = swap_chain;
         self.swap_chain_images = swap_chain_images;
 
-        self.render_pass = Self::render_pass(logger, &self.device, self.swap_chain.format());
+        self.render_pass = Self::render_pass(&self.device, self.swap_chain.format());
 
-        self.pipelines.recreate(logger, &self.device, &self.render_pass);
+        self.pipelines.recreate(&self.device, &self.render_pass);
 
-        self.depth_buffer = match Self::depth_buffer(logger, &self.device, dimensions) {
+        self.depth_buffer = match Self::depth_buffer(&self.device, dimensions) {
             Some(res) => res,
             None => return true,
         };
-        self.swap_chain_framebuffers = Self::framebuffers(logger, &self.swap_chain_images, &self.render_pass, &self.depth_buffer);
+        self.swap_chain_framebuffers = Self::framebuffers(&self.swap_chain_images, &self.render_pass, &self.depth_buffer);
 
         self.dynamic_state.viewports = Self::dynamic_state(dimensions).viewports;
 
@@ -545,17 +540,17 @@ impl Renderer {
         false
     }
 
-    fn update_player(logger: &mut Logger, delta_time: &f32, ecs: &World, player: &Entity, config: &Config) -> (Point3, Vec3) {
+    fn update_player(delta_time: &f32, ecs: &World, player: &Entity, config: &Config) -> (Point3, Vec3) {
         let mut pos_storage = ecs.write_storage::<Pos>();
         let pyr_storage = ecs.read_storage::<PitchYawRoll>();
         let mut speed_storage = ecs.write_storage::<SpeedMultiplier>();
 
         let player_pos = pos_storage.get_mut(*player)
-            .unwrap_or_else(|| logger.error("PlayerController", "Invalid Player Entity; missing Pos Component"));
+            .unwrap_or_else(|| ::error_close!("Invalid Player Entity; missing Pos Component"));
         let player_pyr = pyr_storage.get(*player)
-            .unwrap_or_else(|| logger.error("PlayerController", "Invalid Player Entity; missing PitchYawRoll Component"));
+            .unwrap_or_else(|| ::error_close!("Invalid Player Entity; missing PitchYawRoll Component"));
         let player_speed = speed_storage.get_mut(*player)
-            .unwrap_or_else(|| logger.error("PlayerController", "Invalid Player Entity; missing SpeedMultiplier Component"));
+            .unwrap_or_else(|| ::error_close!("Invalid Player Entity; missing SpeedMultiplier Component"));
 
         let front = Vec3::new(
             cgmath::Rad(player_pyr.1).cos() * cgmath::Rad(player_pyr.0).cos(),
@@ -624,20 +619,23 @@ impl Renderer {
     }
 
     fn model_matrix(translation: Vec3, pitch: f32, yaw: f32, roll: f32) -> Mat4 {
-        Mat4::from_translation(translation) * Mat4::from_angle_x(cgmath::Deg(pitch)) * Mat4::from_angle_y(cgmath::Deg(yaw)) * Mat4::from_angle_z(cgmath::Deg(roll))
+        Mat4::from_translation(translation) *
+        Mat4::from_angle_x(cgmath::Deg(pitch)) *
+        Mat4::from_angle_y(cgmath::Deg(yaw)) *
+        Mat4::from_angle_z(cgmath::Deg(roll))
     }
 
-    pub fn draw(&mut self, logger: &mut Logger, pool: &ThreadPool, delta_time: &f32, ecs: &World, player: &Entity, objects: &Objects, config: &Config) -> bool {
+    pub fn draw(&mut self, pool: &ThreadPool, delta_time: &f32, ecs: &World, player: &Entity, objects: &Objects, config: &Config) -> bool {
         if pool.install(|| {
             // windows resizes window to 0, 0 upon minimizing
             let dimensions: (u32, u32) = self.surface.window().get_inner_size()
-                .unwrap_or_else(|| logger.error("GetWindowSize", "Failed to get the current window dimensions")).into();
+                .unwrap_or_else(|| ::error_close!("Failed to get the current window dimensions")).into();
             if dimensions == (0, 0) {
                 return true
             };
 
             if self.recreate_swap_chain {
-                if self.recreate_swap_chain(logger) { return true }
+                if self.recreate_swap_chain() { return true }
             };
 
             false
@@ -650,7 +648,7 @@ impl Renderer {
                     self.recreate_swap_chain = true;
                     None
                 },
-                Err(err) => logger.error("AcquireNextImage", err),
+                Err(err) => ::error_close!("{}", err),
             }
         }) {
             Some(r) => r,
@@ -659,7 +657,7 @@ impl Renderer {
 
         pool.install(|| {
             self.prev_frame.as_mut()
-                .unwrap_or_else(|| logger.error("PrevFrameFinished", "Prev frame is None (this is impossible)"))
+                .unwrap_or_else(|| ::error_close!("Prev frame is None (this is impossible)"))
                 .cleanup_finished();
         });
 
@@ -668,26 +666,26 @@ impl Renderer {
             if config.controls.engine.wireframe.down() {
                 let mut wireframe_storage = ecs.write_storage::<Wireframe>();
                 let player_wireframe = wireframe_storage.get_mut(*player)
-                    .unwrap_or_else(|| logger.error("PlayerController", "Invalid Player Entity; missing Wireframe Component"));
+                    .unwrap_or_else(|| ::error_close!("Invalid Player Entity; missing Wireframe Component"));
                     
                 player_wireframe.0 = !player_wireframe.0;
 
                 let mut settings = self.pipelines.terrain.settings.clone();
                 settings.wireframe = player_wireframe.0;
 
-                self.pipelines.terrain = pipelines::terrain::Pipeline::new(logger, &self.device, &self.render_pass, settings);
+                self.pipelines.terrain = pipelines::terrain::Pipeline::new(&self.device, &self.render_pass, settings);
             }
         });
 
         let (projection, view) = pool.install(|| {
-            let (pos, front) = pool.install(|| Self::update_player(logger, delta_time, ecs, player, config));
+            let (pos, front) = pool.install(|| Self::update_player(delta_time, ecs, player, config));
 
             Self::pv_matrices(self.swap_chain.dimensions(), pos, front)
         });
 
         let command_buffer = pool.install(|| {
             let mut command_buffer = AutoCommandBufferBuilder::primary_one_time_submit(self.device.clone(), self.queue.family())
-                .unwrap_or_else(|err| logger.error("CreateCommandBuffer", err))
+                .unwrap_or_else(|err| ::error_close!("{}", err))
                 .begin_render_pass(
                     self.swap_chain_framebuffers[image_index].clone(), // requested swapchain framebuffer
                     false, // no secondary command buffer
@@ -697,8 +695,8 @@ impl Renderer {
                     ],
                 )
                 .unwrap_or_else(|err| match err {
-                    BeginRenderPassError::AutoCommandBufferBuilderContextError(err) => logger.error("BeginRenderPass", err),
-                    BeginRenderPassError::SyncCommandBufferBuilderError(err) => logger.error("BeginRenderPass", err),
+                    BeginRenderPassError::AutoCommandBufferBuilderContextError(err) => ::error_close!("{}", err),
+                    BeginRenderPassError::SyncCommandBufferBuilderError(err) => ::error_close!("{}", err),
                 });
 
             let pipelines = ecs.read_storage::<Pipeline>();
@@ -717,12 +715,12 @@ impl Renderer {
                                         //view: view.into(),
                                         //model: model_mat.into(),
                                     }).unwrap_or_else(|err| match err {
-                                        DeviceMemoryAllocError::OomError(err) => logger.error("BufferPoolNext", err),
-                                        _ => logger.error("BufferPoolNext", err),
-                                    })).unwrap_or_else(|err| logger.error("AddDescBuffer", err))
+                                        DeviceMemoryAllocError::OomError(err) => ::error_close!("{}", err),
+                                        _ => ::error_close!("{}", err),
+                                    })).unwrap_or_else(|err| ::error_close!("{}", err))
                                 .build().unwrap_or_else(|err| match err {
-                                    PersistentDescriptorSetBuildError::OomError(err) => logger.error("CreateDescSet", err),
-                                    _ => logger.error("CreateDescSet", err),
+                                    PersistentDescriptorSetBuildError::OomError(err) => ::error_close!("{}", err),
+                                    _ => ::error_close!("{}", err),
                                 })
                             )
                         });
@@ -746,12 +744,12 @@ impl Renderer {
                                         //view: view.into(),
                                         //model: model_mat.into(),
                                     }).unwrap_or_else(|err| match err {
-                                        DeviceMemoryAllocError::OomError(err) => logger.error("BufferPoolNext", err),
-                                        _ => logger.error("BufferPoolNext", err),
-                                    })).unwrap_or_else(|err| logger.error("AddDescBuffer", err))
+                                        DeviceMemoryAllocError::OomError(err) => ::error_close!("{}", err),
+                                        _ => ::error_close!("{}", err),
+                                    })).unwrap_or_else(|err| ::error_close!("{}", err))
                                 .build().unwrap_or_else(|err| match err {
-                                    PersistentDescriptorSetBuildError::OomError(err) => logger.error("CreateDescSet", err),
-                                    _ => logger.error("CreateDescSet", err),
+                                    PersistentDescriptorSetBuildError::OomError(err) => ::error_close!("{}", err),
+                                    _ => ::error_close!("{}", err),
                                 })
                             )
                         });
@@ -770,11 +768,11 @@ impl Renderer {
             }
 
             command_buffer.end_render_pass()
-                .unwrap_or_else(|err| logger.error("EndRenderPass", err))
+                .unwrap_or_else(|err| ::error_close!("{}", err))
                 .build()
                 .unwrap_or_else(|err| match err {
-                    BuildError::AutoCommandBufferBuilderContextError(err) => logger.error("BuildRenderPass", err),
-                    BuildError::OomError(err) => logger.error("BuildRenderPass", err),
+                    BuildError::AutoCommandBufferBuilderContextError(err) => ::error_close!("{}", err),
+                    BuildError::OomError(err) => ::error_close!("{}", err),
                 })
         });
 
@@ -782,7 +780,7 @@ impl Renderer {
             match self.prev_frame.take().unwrap_or(Box::new(sync::now(self.device.clone())) as Box<_>)
                 .join(acquire_future)
                 .then_execute(self.queue.clone(), command_buffer)
-                    .unwrap_or_else(|err| logger.error("CmdBufferExecute", err))
+                    .unwrap_or_else(|err| ::error_close!("{}", err))
                 .then_swapchain_present(self.queue.clone(), self.swap_chain.clone(), image_index)
                 .then_signal_fence_and_flush()
             {
@@ -794,7 +792,7 @@ impl Renderer {
                     self.prev_frame = Some(Box::new(sync::now(self.device.clone())) as Box<_>);
                 },
                 Err(err) => {
-                    logger.warning("FinishFrame", err);
+                    warn!("{}", err);
                     self.prev_frame = Some(Box::new(sync::now(self.device.clone())) as Box<_>);
                 },
             };
@@ -802,5 +800,5 @@ impl Renderer {
 
         // drawing didn't fail
         false
-    }   
+    }
 }

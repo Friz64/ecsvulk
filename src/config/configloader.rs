@@ -2,7 +2,6 @@ use std::{
     fs::{File, OpenOptions},
     io::{self, SeekFrom, Write},
 };
-use logger::Logger;
 use super::keycode::{
     Input
 };
@@ -10,6 +9,7 @@ use ::toml;
 use ::winit::{
     VirtualKeyCode, ElementState, MouseButton,
 };
+use log::warn;
 
 gen_config! {
     ConfigControls controls {
@@ -37,28 +37,28 @@ gen_config! {
 
 
 impl Config {
-    pub fn new(logger: &mut Logger, confpath: &str) -> Self {
-        let config = option::new(logger, confpath);
+    pub fn new(confpath: &str) -> Self {
+        let config = option::new(confpath);
 
         // TODO: marker for config change
         let config_controls = config.controls
             .unwrap_or_else(|| {
-                logger.warning("ConfigChecker", "config.controls is invalid, using default");
+                warn!("config.controls is invalid, using default");
                 Default::default()
             });
         let config_controls_movement = config_controls.movement
             .unwrap_or_else(|| {
-                logger.warning("ConfigChecker", "config.controls.movement is invalid, using default");
+                warn!("config.controls.movement is invalid, using default");
                 Default::default()
             });
         let config_controls_sensitivity = config_controls.sensitivity
             .unwrap_or_else(|| {
-                logger.warning("ConfigChecker", "config.controls.sensitivity is invalid, using default");
+                warn!("config.controls.sensitivity is invalid, using default");
                 Default::default()
             });
         let config_controls_engine = config_controls.engine
             .unwrap_or_else(|| {
-                logger.warning("ConfigChecker", "config.controls.engine is invalid, using default");
+                warn!("config.controls.engine is invalid, using default");
                 Default::default()
             });
 
@@ -66,52 +66,52 @@ impl Config {
         let result = Config {
             controls: ConfigControls {
                 movement: ConfigControlsMovement {
-                    forwards: Input::from_str(logger, config_controls_movement.forwards, "config.controls.movement.forwards", "w"),
+                    forwards: Input::from_str(config_controls_movement.forwards, "config.controls.movement.forwards", "w"),
 
-                    backwards: Input::from_str(logger, config_controls_movement.backwards, "config.controls.movement.backwards", "s"),
+                    backwards: Input::from_str(config_controls_movement.backwards, "config.controls.movement.backwards", "s"),
 
-                    left: Input::from_str(logger, config_controls_movement.left, "config.controls.movement.left", "a"),
+                    left: Input::from_str(config_controls_movement.left, "config.controls.movement.left", "a"),
 
-                    right: Input::from_str(logger, config_controls_movement.right, "config.controls.movement.right", "d"),
+                    right: Input::from_str(config_controls_movement.right, "config.controls.movement.right", "d"),
 
-                    down: Input::from_str(logger, config_controls_movement.down, "config.controls.movement.down", "l_control"),
+                    down: Input::from_str(config_controls_movement.down, "config.controls.movement.down", "l_control"),
 
-                    up: Input::from_str(logger, config_controls_movement.up, "config.controls.movement.up", "space"),
+                    up: Input::from_str(config_controls_movement.up, "config.controls.movement.up", "space"),
 
-                    speed_up: Input::from_str(logger, config_controls_movement.speed_up, "config.controls.movement.speed_up", "scroll_up"),
+                    speed_up: Input::from_str(config_controls_movement.speed_up, "config.controls.movement.speed_up", "scroll_up"),
 
-                    speed_down: Input::from_str(logger, config_controls_movement.speed_down, "config.controls.movement.speed_down", "scroll_down"),
+                    speed_down: Input::from_str(config_controls_movement.speed_down, "config.controls.movement.speed_down", "scroll_down"),
                 },
                 sensitivity: ConfigControlsSensitivity {
                     mouse_speed: config_controls_sensitivity.mouse_speed.unwrap_or_else(|| {
-                        logger.warning("ConfigChecker", "config.controls.sensitivity.mouse_speed is invalid, using default");
+                        warn!("config.controls.sensitivity.mouse_speed is invalid, using default");
                         1.0
                     }),
 
                     movement_speed: config_controls_sensitivity.movement_speed.unwrap_or_else(|| {
-                        logger.warning("ConfigChecker", "config.controls.sensitivity.movement_speed is invalid, using default");
+                        warn!("config.controls.sensitivity.movement_speed is invalid, using default");
                         1.0
                     }),
 
                     scroll_speed: config_controls_sensitivity.scroll_speed.unwrap_or_else(|| {
-                        logger.warning("ConfigChecker", "config.controls.sensitivity.scroll_speed is invalid, using default");
+                        warn!("config.controls.sensitivity.scroll_speed is invalid, using default");
                         1.0
                     }),
                 },
                 engine: ConfigControlsEngine {
-                    grab_cursor: Input::from_str(logger, config_controls_engine.grab_cursor, "config.controls.engine.grab_cursor", "g"),
+                    grab_cursor: Input::from_str(config_controls_engine.grab_cursor, "config.controls.engine.grab_cursor", "g"),
 
-                    wireframe: Input::from_str(logger, config_controls_engine.wireframe, "config.controls.engine.wireframe", "f"),
+                    wireframe: Input::from_str(config_controls_engine.wireframe, "config.controls.engine.wireframe", "f"),
                 },
             },
         };
 
-        logger.info("Config", "Config initialized");
+        log::info!("Config initialized");
 
         result
     }
 
-    pub fn save(&self, logger: &mut Logger, config_path: &str) {
+    pub fn save(&self, config_path: &str) {
         let path = format!("./{}/{}", ::NAME, config_path);
 
         // TODO: marker for config change
@@ -140,19 +140,19 @@ impl Config {
         };
         let serialized = toml::to_string(&reconstructed)
             .unwrap_or_else(|err| {
-                logger.warning("ConfigGen", err);
+                warn!("{}", err);
                 String::new()
             });
         
         let mut file = OpenOptions::new()
             .write(true).open(&path)
-            .unwrap_or_else(|err| logger.error("ConfigSave", err));
+            .unwrap_or_else(|err| ::error_close!("{}", err));
 
         // delete everything in file
         file.set_len(0)
-            .unwrap_or_else(|err| logger.error("ConfigSave", err));
+            .unwrap_or_else(|err| ::error_close!("{}", err));
 
         file.write(serialized.as_bytes())
-            .unwrap_or_else(|err| logger.error("ConfigSave", err));
+            .unwrap_or_else(|err| ::error_close!("{}", err));
     }
 }

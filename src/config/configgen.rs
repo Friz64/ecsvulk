@@ -87,7 +87,7 @@ macro_rules! gen_config {
                 )*
             )* 
 
-            pub fn new(logger: &mut Logger, config_path: &str) -> Config {
+            pub fn new(config_path: &str) -> Config {
                 use std::io::{Read, Seek};
 
                 let path = format!("./{}/{}", ::NAME, config_path);
@@ -96,50 +96,50 @@ macro_rules! gen_config {
                 let mut file = File::open(&path)
                     .unwrap_or_else(|err| match err.kind() {
                         io::ErrorKind::NotFound => {
-                            logger.warning("ConfigMissing", "Config file missing, creating new one");
+                            log::warn!("Config file missing, creating new one");
 
                             // file::create doesn't allow reading
                             // https://doc.rust-lang.org/std/fs/struct.OpenOptions.html
                             let mut file = OpenOptions::new()
                                 .read(true).write(true).create(true).open(&path)
                                 .unwrap_or_else(|err|
-                                    logger.error("ConfigCreate", err)
+                                    ::error_close!("{}", err)
                                 );
 
                             let serialized = toml::to_string(&default)
                                 .unwrap_or_else(|err| {
-                                    logger.warning("ConfigGen", err);
+                                    warn!("{}", err);
                                     String::new()
                                 });
 
                             file.write(serialized.as_bytes())
                                 .map_err(|err| {
-                                    logger.warning("ConfigWrite", err);
+                                    warn!("{}", err);
                                 }).ok();
 
                             file
                         },
-                        _ => logger.error("ConfigOpen", err),
+                        _ => ::error_close!("{}", err),
                     });
 
                 // read the file from start because we just wrote to it
                 // https://doc.rust-lang.org/std/io/trait.Seek.html#tymethod.seek
                 file.seek(SeekFrom::Start(0))
                     .unwrap_or_else(|err| {
-                        logger.warning("ConfigRead", err);
+                        warn!("{}", err);
                         Default::default()
                     });
 
                 let mut contents = String::new();
                 file.read_to_string(&mut contents)
                     .unwrap_or_else(|err| {
-                        logger.warning("ConfigRead", err);
+                        warn!("{}", err);
                         Default::default()
                     });
 
                 toml::from_str(&contents)
                     .unwrap_or_else(|err| {
-                        logger.warning("ConfigDecode", err.to_string() + " - USING DEFAULT CONFIG INSTEAD");
+                        warn!("{} - USING DEFAULT CONFIG INSTEAD", err);
                         Config::default()
                     })
             }

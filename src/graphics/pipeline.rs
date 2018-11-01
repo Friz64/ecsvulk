@@ -22,18 +22,18 @@ macro_rules! gen_pipelines {
         }
 
         impl Pipelines {
-            pub fn new(logger: &mut Logger, device: &Arc<Device>, render_pass: &Arc<RenderPassAbstract + Send + Sync>) -> Self {
+            pub fn new(device: &Arc<Device>, render_pass: &Arc<RenderPassAbstract + Send + Sync>) -> Self {
                 Pipelines {
                     $(
-                        $name: $name::Pipeline::new(logger, device, render_pass, $settings),
+                        $name: $name::Pipeline::new(device, render_pass, $settings),
                     )*
                 }
             }
 
-            pub fn recreate(&self, logger: &mut Logger, device: &Arc<Device>, render_pass: &Arc<RenderPassAbstract + Send + Sync>) -> Self {
+            pub fn recreate(&self, device: &Arc<Device>, render_pass: &Arc<RenderPassAbstract + Send + Sync>) -> Self {
                 Pipelines {
                     $(
-                        $name: $name::Pipeline::new(logger, device, render_pass, self.$name.settings),
+                        $name: $name::Pipeline::new(device, render_pass, self.$name.settings),
                     )*
                 }
             }
@@ -71,15 +71,14 @@ macro_rules! gen_pipelines {
 
             impl Pipeline {
                 pub fn new(
-                    logger: &mut Logger,
                     device: &Arc<Device>,
                     render_pass: &Arc<RenderPassAbstract + Send + Sync>,
                     settings: PipelineSettings,
                 ) -> Self {
                     let vert = $name::vs::Shader::load(device.clone())
-                        .unwrap_or_else(|err| logger.error("ShaderLoad", err));
+                        .unwrap_or_else(|err| ::error_close!("{}", err));
                     let frag = $name::fs::Shader::load(device.clone())
-                        .unwrap_or_else(|err| logger.error("ShaderLoad", err));
+                        .unwrap_or_else(|err| ::error_close!("{}", err));
 
                     let tbd: TwoBuffersDefinition<Vertex, Normal> = TwoBuffersDefinition::new();
 
@@ -100,9 +99,9 @@ macro_rules! gen_pipelines {
                     
                     let pipeline = Arc::new(pipeline
                         .render_pass(Subpass::from(render_pass.clone(), 0)
-                            .unwrap_or_else(|| logger.error("CreatePipeline", "Failed to create Subpass")))
+                            .unwrap_or_else(|| ::error_close!("Failed to create Subpass")))
                         .build(device.clone())
-                            .unwrap_or_else(|err| logger.error(&("CreatePipeline_".to_owned() + stringify!($name)), err))
+                            .unwrap_or_else(|err| ::error_close!("{}", err))
                     );
                     
                     let cbp = CpuBufferPool::new(device.clone(), BufferUsage::all());

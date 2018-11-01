@@ -41,7 +41,3 @@ pub struct Physics(pub BodyHandle);
 impl Component for Physics {
     type Storage = VecStorage<Self>;
 }
-/*
-impl Physics {
-    fn new()
-}*/
