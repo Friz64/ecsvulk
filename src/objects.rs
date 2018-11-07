@@ -1,5 +1,4 @@
-use log::{info, warn, error};
-//use ::logger::error_close;
+use log::{info, warn};
 use obj;
 use std::{
     io::BufReader,

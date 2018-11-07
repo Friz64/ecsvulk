@@ -14,6 +14,13 @@ macro_rules! gen_config {
             fn update_scroll(&mut self, _: f32) {}
             fn update_status(&mut self) {}
         }
+
+        impl UpdateConfigHack for bool {
+            fn update_key(&mut self, _: Option<VirtualKeyCode>, _: ElementState) {}
+            fn update_mouse(&mut self, _: MouseButton, _: ElementState) {}
+            fn update_scroll(&mut self, _: f32) {}
+            fn update_status(&mut self) {}
+        }
         
         mod option {
             use super::*;

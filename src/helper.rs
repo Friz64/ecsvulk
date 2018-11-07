@@ -1,11 +1,9 @@
 use std::fs;
 use std::io::ErrorKind;
-use std::io::Write;
 use nphysics3d::{
     world::World,
     math::Vector,
 };
-use log::warn;
 use ansi_term::Color::Red;
 
 macro_rules! shutdown {

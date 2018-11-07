@@ -32,6 +32,11 @@ gen_config! {
             grab_cursor String Input "g".to_uppercase()
             wireframe String Input "f".to_uppercase()
         }
+    },
+    ConfigGraphics graphics {
+        ConfigGraphicsSettings settings {
+            vsync bool bool true
+        }
     }
 }
 
@@ -46,6 +51,7 @@ impl Config {
                 warn!("config.controls is invalid, using default");
                 Default::default()
             });
+
         let config_controls_movement = config_controls.movement
             .unwrap_or_else(|| {
                 warn!("config.controls.movement is invalid, using default");
@@ -59,6 +65,20 @@ impl Config {
         let config_controls_engine = config_controls.engine
             .unwrap_or_else(|| {
                 warn!("config.controls.engine is invalid, using default");
+                Default::default()
+            });
+
+
+
+        let config_graphics = config.graphics
+            .unwrap_or_else(|| {
+                warn!("config.graphics is invalid, using default");
+                Default::default()
+            });
+
+        let config_graphics_settings = config_graphics.settings
+            .unwrap_or_else(|| {
+                warn!("config.graphics.settings is invalid, using default");
                 Default::default()
             });
 
@@ -104,6 +124,14 @@ impl Config {
                     wireframe: Input::from_str(config_controls_engine.wireframe, "config.controls.engine.wireframe", "f"),
                 },
             },
+            graphics: ConfigGraphics {
+                settings: ConfigGraphicsSettings {
+                    vsync: config_graphics_settings.vsync.unwrap_or_else(|| {
+                        warn!("config.graphics.settings.vsync is invalid, using default");
+                        true
+                    }),
+                }
+            },
         };
 
         log::info!("Config initialized");
@@ -134,8 +162,13 @@ impl Config {
                 }),
                 engine: Some(option::ConfigControlsEngine {
                     grab_cursor: Some(self.controls.engine.grab_cursor.to_string()),
-                    wireframe: Some(self.controls.engine.wireframe.to_string())
-                })
+                    wireframe: Some(self.controls.engine.wireframe.to_string()),
+                }),
+            }),
+            graphics: Some(option::ConfigGraphics {
+                settings: Some(option::ConfigGraphicsSettings {
+                    vsync: Some(self.graphics.settings.vsync),
+                }),
             }),
         };
         let serialized = toml::to_string(&reconstructed)

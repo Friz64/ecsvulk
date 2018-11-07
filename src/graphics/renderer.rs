@@ -94,7 +94,7 @@ pub struct Renderer {
 }
 
 impl Renderer {
-    pub fn new(events_loop: &EventsLoop) -> (Self, Option<DebugCallback>) {
+    pub fn new(events_loop: &EventsLoop, config: &Config) -> (Self, Option<DebugCallback>) {
         let required_device_extensions = DeviceExtensions {
             khr_swapchain: true,
             .. DeviceExtensions::none()
@@ -108,7 +108,7 @@ impl Renderer {
         let (physical_device, queue_family) = Self::physical_device(&instance, &surface, &required_device_extensions);
         let (device, queue) =  Self::logical_device(&instance, &required_device_extensions, physical_device, queue_family);
 
-        let (swap_chain, swap_chain_images) = Self::swap_chain(&instance, &surface, physical_device, &device, &queue);
+        let (swap_chain, swap_chain_images) = Self::swap_chain(&instance, &surface, physical_device, &device, &queue, config);
 
         let render_pass = Self::render_pass(&device, swap_chain.format());
 
@@ -282,6 +282,7 @@ impl Renderer {
         physical_device_index: usize,
         device: &Arc<Device>,
         queue: &Arc<Queue>,
+        config: &Config,
     ) -> (Arc<Swapchain<Window>>, Vec<Arc<SwapchainImage<Window>>>) {
         let physical_device = PhysicalDevice::from_index(instance, physical_device_index)
             .unwrap_or_else(|| ::error_close!("Failed to reconstruct physical device from earlier obtained index"));
@@ -302,18 +303,15 @@ impl Renderer {
             //capabilities.supported_formats[0]
         };
 
-        let present_mode = { // https://docs.rs/vulkano/0.10.0/vulkano/swapchain/enum.PresentMode.html
-            let present_modes = capabilities.present_modes;
-
-            if present_modes.mailbox {
-                PresentMode::Mailbox
-            } else {
-                warn!("Using VSync (Fifo), because Mailbox isn't supported");
+        // https://docs.rs/vulkano/0.10.0/vulkano/swapchain/enum.PresentMode.html
+        let present_mode = match config.graphics.settings.vsync { // fifo is always supported
+            false if capabilities.present_modes.immediate => PresentMode::Immediate, // vsync not requested, capable of immediate
+            true if !capabilities.present_modes.immediate => {
+                warn!("VSync is disabled, but not syncing isn't available");
                 PresentMode::Fifo
-            }
+            }, // vsync requested, not capable of immediate
+            _ => PresentMode::Fifo, // requested, use it
         };
-
-        let present_mode = PresentMode::Immediate;
 
         let dimensions = capabilities.current_extent.unwrap_or([800, 600]);
 
@@ -625,8 +623,8 @@ impl Renderer {
         Mat4::from_angle_z(cgmath::Deg(roll))
     }
 
-    pub fn draw(&mut self, pool: &ThreadPool, delta_time: &f32, ecs: &World, player: &Entity, objects: &Objects, config: &Config) -> bool {
-        if pool.install(|| {
+    pub fn draw(&mut self, delta_time: &f32, ecs: &World, player: &Entity, objects: &Objects, config: &Config) -> bool {
+        if {
             // windows resizes window to 0, 0 upon minimizing
             let dimensions: (u32, u32) = self.surface.window().get_inner_size()
                 .unwrap_or_else(|| ::error_close!("Failed to get the current window dimensions")).into();
@@ -639,9 +637,9 @@ impl Renderer {
             };
 
             false
-        }) { return true; };
+        } { return true; };
 
-        let (image_index, acquire_future) = match pool.install(|| {
+        let (image_index, acquire_future) = match {
             match swapchain::acquire_next_image(self.swap_chain.clone(), None) {
                 Ok(r) => Some(r),
                 Err(AcquireError::OutOfDate) => {
@@ -650,40 +648,36 @@ impl Renderer {
                 },
                 Err(err) => ::error_close!("{}", err),
             }
-        }) {
+        } {
             Some(r) => r,
             None => return true,
         };
 
-        pool.install(|| {
-            self.prev_frame.as_mut()
-                .unwrap_or_else(|| ::error_close!("Prev frame is None (this is impossible)"))
-                .cleanup_finished();
-        });
+        self.prev_frame.as_mut()
+            .unwrap_or_else(|| ::error_close!("Prev frame is None (this is impossible)"))
+            .cleanup_finished();
 
         // update engine config stuff
-        pool.install(|| {
-            if config.controls.engine.wireframe.down() {
-                let mut wireframe_storage = ecs.write_storage::<Wireframe>();
-                let player_wireframe = wireframe_storage.get_mut(*player)
-                    .unwrap_or_else(|| ::error_close!("Invalid Player Entity; missing Wireframe Component"));
-                    
-                player_wireframe.0 = !player_wireframe.0;
+        if config.controls.engine.wireframe.down() {
+            let mut wireframe_storage = ecs.write_storage::<Wireframe>();
+            let player_wireframe = wireframe_storage.get_mut(*player)
+                .unwrap_or_else(|| ::error_close!("Invalid Player Entity; missing Wireframe Component"));
+                
+            player_wireframe.0 = !player_wireframe.0;
 
-                let mut settings = self.pipelines.terrain.settings.clone();
-                settings.wireframe = player_wireframe.0;
+            let mut settings = self.pipelines.terrain.settings.clone();
+            settings.wireframe = player_wireframe.0;
 
-                self.pipelines.terrain = pipelines::terrain::Pipeline::new(&self.device, &self.render_pass, settings);
-            }
-        });
+            self.pipelines.terrain = pipelines::terrain::Pipeline::new(&self.device, &self.render_pass, settings);
+        }
 
-        let (projection, view) = pool.install(|| {
-            let (pos, front) = pool.install(|| Self::update_player(delta_time, ecs, player, config));
+        let (projection, view) =  {
+            let (pos, front) = Self::update_player(delta_time, ecs, player, config);
 
             Self::pv_matrices(self.swap_chain.dimensions(), pos, front)
-        });
+        };
 
-        let command_buffer = pool.install(|| {
+        let command_buffer = {
             let mut command_buffer = AutoCommandBufferBuilder::primary_one_time_submit(self.device.clone(), self.queue.family())
                 .unwrap_or_else(|err| ::error_close!("{}", err))
                 .begin_render_pass(
@@ -708,7 +702,7 @@ impl Renderer {
                 match pipeline.0 {
                     pipelines::Pipeline::terrain => {
                         let model_mat = Self::model_matrix(pos.0, *pitch, *yaw, *roll);
-                        let main_set = pool.install(|| {
+                        let main_set = {
                             Arc::new(self.pipelines.terrain.sets_pool.next()
                                 .add_buffer(self.pipelines.terrain.cbp.next(pipelines::terrain::vs::ty::Data {
                                         mvp: (projection * view * model_mat).into(),
@@ -723,7 +717,7 @@ impl Renderer {
                                     _ => ::error_close!("{}", err),
                                 })
                             )
-                        });
+                        };
 
                         if let Some((vertex_buf, normals_buf, index_buf)) = model.0.get_buffers(objects) {
                             command_buffer = command_buffer.draw_indexed(
@@ -737,7 +731,7 @@ impl Renderer {
                     },
                     pipelines::Pipeline::normal => {
                         let model_mat = Self::model_matrix(pos.0, *pitch, *yaw, *roll);
-                        let main_set = pool.install(|| {
+                        let main_set = {
                             Arc::new(self.pipelines.normal.sets_pool.next()
                                 .add_buffer(self.pipelines.normal.cbp.next(pipelines::normal::vs::ty::Data {
                                         mvp: (projection * view * model_mat).into(),
@@ -752,7 +746,7 @@ impl Renderer {
                                     _ => ::error_close!("{}", err),
                                 })
                             )
-                        });
+                        };
 
                         if let Some((vertex_buf, normals_buf, index_buf)) = model.0.get_buffers(objects) {
                             command_buffer = command_buffer.draw_indexed(
@@ -774,9 +768,9 @@ impl Renderer {
                     BuildError::AutoCommandBufferBuilderContextError(err) => ::error_close!("{}", err),
                     BuildError::OomError(err) => ::error_close!("{}", err),
                 })
-        });
+        };
 
-        pool.install(|| {
+        {
             match self.prev_frame.take().unwrap_or(Box::new(sync::now(self.device.clone())) as Box<_>)
                 .join(acquire_future)
                 .then_execute(self.queue.clone(), command_buffer)
@@ -796,7 +790,7 @@ impl Renderer {
                     self.prev_frame = Some(Box::new(sync::now(self.device.clone())) as Box<_>);
                 },
             };
-        });
+        };
 
         // drawing didn't fail
         false

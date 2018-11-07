@@ -39,7 +39,7 @@ use graphics::{
 use objects::*;
 use ecs::{
     entities, components::{
-        PitchYawRoll, Pos,
+        PitchYawRoll,
     },
 };
 use std::{
@@ -57,7 +57,7 @@ use rayon::{
 use simdnoise::{
     NoiseType,
 };
-use log::{info, debug, error, warn, trace};
+use log::{info, warn};
 
 #[cfg(debug_assertions)]
 const DEBUG: bool = true;
@@ -82,7 +82,7 @@ fn main() {
         .unwrap_or_else(|err| error_close!("{}", err));
     let mut config = configloader::Config::new("config.toml");
     let mut events_loop = winit::EventsLoop::new();
-    let (mut renderer, _debug) = Renderer::new(&events_loop);
+    let (mut renderer, _debug) = Renderer::new(&events_loop, &config);
     let objects = Objects::load(&renderer.queue);
     let mut ecs = ecs::init();
     let mut physics = create_physics();
@@ -118,13 +118,13 @@ fn main() {
     let mut running = true;
     while running {
         // update deltatime
-        let delta_time = pool.install(|| {
+        let delta_time = {
             let this_frame = Instant::now();
             let frametime = this_frame.duration_since(old_frame);
             old_frame = this_frame;
 
             frametime.as_secs() as f32 + frametime.subsec_nanos() as f32 / 1_000_000_000.0
-        });
+        };
 
         // handle events
         events_loop.poll_events(|event| match event {
@@ -168,37 +168,31 @@ fn main() {
         });
         
         // updates down, hold, up and none
-        pool.install(|| config.update_status());
+        config.update_status();
 
-        pool.install(|| {
-            if config.controls.engine.grab_cursor.down() {
-                renderer.cursor_grabbed = !renderer.cursor_grabbed;
+        if config.controls.engine.grab_cursor.down() {
+            renderer.cursor_grabbed = !renderer.cursor_grabbed;
 
-                renderer.surface.window().grab_cursor(renderer.cursor_grabbed)
-                    .unwrap_or_else(|err| ::error_close!("{}", err));
+            renderer.surface.window().grab_cursor(renderer.cursor_grabbed)
+                .unwrap_or_else(|err| ::error_close!("{}", err));
 
-                renderer.surface.window().hide_cursor(renderer.cursor_grabbed);
-            }
-        });
+            renderer.surface.window().hide_cursor(renderer.cursor_grabbed);
+        }
 
         // perform physics
-        pool.install(|| {
-            physics.set_timestep(delta_time);
+        physics.set_timestep(delta_time);
 
-            //physics.step();
+        //physics.step();
 
-            //println!("pos: {}", physics.rigid_body(test).unwrap().position().translation.vector.y);
-            
-            //println!("fps: {}", 1.0 / delta_time);
-        });
+        //println!("pos: {}", physics.rigid_body(test).unwrap().position().translation.vector.y);
+        
+        //println!("fps: {}", 1.0 / delta_time);
 
         // render
-        if pool.install(|| {
-            renderer.draw(&pool, &delta_time, &ecs, &player, &objects, &config)
-        }) { continue; };
+        if renderer.draw(&delta_time, &ecs, &player, &objects, &config) { continue; };
 
         // sets scroll back to none
-        pool.install(|| config.update_scroll(0.0));
+        config.update_scroll(0.0);
     };
 
     info!("Exiting...");
