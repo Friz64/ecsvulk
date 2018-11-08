@@ -1,7 +1,11 @@
-use chrono::{DateTime, Local, Timelike};
-use log::{Log, Metadata, Record, Level, LevelFilter};
-use std::{sync::Mutex, fs::{File, OpenOptions}, io::Write};
 use ansi_term::Color::*;
+use chrono::{DateTime, Local, Timelike};
+use log::{Level, LevelFilter, Log, Metadata, Record};
+use std::{
+    fs::{File, OpenOptions},
+    io::Write,
+    sync::Mutex,
+};
 
 #[macro_export]
 macro_rules! error_close {
@@ -25,11 +29,14 @@ impl Logger {
             .open(format!("./{}/{}", ::NAME, path));
 
         if let Err(err) = &file {
-            eprintln!("{}", Red.paint(format!("Not logging to {} - {}", path, err)));
+            eprintln!(
+                "{}",
+                Red.paint(format!("Not logging to {} - {}", path, err))
+            );
         }
 
         let logger = Logger {
-            file: file.ok().map(|option| Mutex::new(option)),
+            file: file.ok().map(Mutex::new),
         };
 
         log::set_boxed_logger(Box::new(logger)).unwrap();
@@ -57,10 +64,15 @@ impl Log for Logger {
 
             if let Some(file) = &self.file {
                 if let Ok(mut file) = file.lock() {
-                    writeln!(file, "[{}] {}{} - {}: {}",
+                    writeln!(
+                        file,
+                        "[{}] {}{} - {}: {}",
                         time,
                         record.target(),
-                        record.line().map(|option| format!(":{}", option)).unwrap_or_default(),
+                        record
+                            .line()
+                            .map(|option| format!(":{}", option))
+                            .unwrap_or_default(),
                         record.level(),
                         record.args(),
                     );
@@ -76,10 +88,14 @@ impl Log for Logger {
             };
 
             // https://upload.wikimedia.org/wikipedia/commons/1/15/Xterm_256color_chart.svg
-            println!("[{}] {}{} - {}: {}",
+            println!(
+                "[{}] {}{} - {}: {}",
                 Fixed(245).paint(time),
                 record.target(),
-                record.line().map(|option| format!(":{}", Fixed(172).paint(option.to_string()))).unwrap_or_default(),
+                record
+                    .line()
+                    .map(|option| format!(":{}", Fixed(172).paint(option.to_string())))
+                    .unwrap_or_default(),
                 level,
                 record.args(),
             );
@@ -96,7 +112,8 @@ impl Log for Logger {
 }
 
 fn format_time(time: DateTime<Local>) -> String {
-    format!("{:02}:{:02}:{:02}.{:03}",
+    format!(
+        "{:02}:{:02}:{:02}.{:03}",
         time.hour(),
         time.minute(),
         time.second(),

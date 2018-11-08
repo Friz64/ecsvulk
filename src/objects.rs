@@ -1,29 +1,18 @@
+use cgmath::InnerSpace;
+use graphics::{self, renderer::Renderer, Normal, Vec3, Vertex};
 use log::{info, warn};
 use obj;
-use std::{
-    io::BufReader,
-    fs::File,
-    default::Default,
-    sync::{Arc},
-};
-use graphics::{
-    self, Vec3, Vertex, Normal, renderer::Renderer,
-};
-use ::vulkano::{
-    device::Queue,
+use simdnoise::{self, NoiseType};
+use std::{default::Default, fs::File, io::BufReader, sync::Arc};
+use vulkano::{
     buffer::{BufferAccess, TypedBufferAccess},
-};
-use ::simdnoise::{
-    self, NoiseType,
-};
-use ::cgmath::{
-    InnerSpace,
+    device::Queue,
 };
 
 pub struct ModelBuffers {
     vertex_buf: Option<Arc<BufferAccess + Send + Sync>>,
     normals_buf: Option<Arc<BufferAccess + Send + Sync>>,
-    index_buf: Option<Arc<TypedBufferAccess<Content=[u16]> + Send + Sync>>,
+    index_buf: Option<Arc<TypedBufferAccess<Content = [u16]> + Send + Sync>>,
 }
 
 macro_rules! gen_objects {
@@ -55,7 +44,7 @@ macro_rules! gen_objects {
             )*
             Custom(ModelBuffers)
         }
-        
+
         impl Object {
             pub fn get_buffers(&self, objects: &Objects) -> Option<(
                 Arc<BufferAccess + Send + Sync>,
@@ -106,31 +95,30 @@ impl Default for ModelBuffers {
 fn load_obj(queue: &Arc<Queue>, name: &str) -> Option<ModelBuffers> {
     let path = format!("./{}/models/{}.obj", ::NAME, name);
 
-    let input = BufReader::new(
-        match File::open(path) {
-            Ok(res) => res,
-            Err(err) => {
-                warn!("Failed to open {}.obj: {}", name, err);
-                return None;
-            },
+    let input = BufReader::new(match File::open(path) {
+        Ok(res) => res,
+        Err(err) => {
+            warn!("Failed to open {}.obj: {}", name, err);
+            return None;
         }
-    );
+    });
 
     let obj: obj::Obj<obj::Vertex> = match obj::load_obj(input) {
         Ok(res) => res,
         Err(err) => {
             warn!("Failed to load {}.obj: {}", name, err);
             return None;
-        },
+        }
     };
 
     let mut vertices = vec![];
     let mut normals = vec![];
-    obj.vertices.iter()
-        .for_each(|vert| {
-            vertices.push(Vertex { pos: vert.position });
-            normals.push(Normal { normal: vert.normal });
-        });;
+    obj.vertices.iter().for_each(|vert| {
+        vertices.push(Vertex { pos: vert.position });
+        normals.push(Normal {
+            normal: vert.normal,
+        });
+    });;
     let indices = obj.indices;
 
     Some(ModelBuffers {
@@ -143,21 +131,32 @@ fn load_obj(queue: &Arc<Queue>, name: &str) -> Option<ModelBuffers> {
 // actually does the work, specify the objs here
 gen_objects!(/*teapot, suzanne*/);
 
-pub fn gen_terrain(queue: &Arc<Queue>, scale: f32, x_off: f32, y_off: f32, noise_type: NoiseType) -> Object {
+pub fn gen_terrain(
+    queue: &Arc<Queue>,
+    scale: f32,
+    x_off: f32,
+    y_off: f32,
+    noise_type: NoiseType,
+) -> Object {
     let length: usize = 255;
     let range = length.pow(2);
 
-    let noise = simdnoise::get_2d_scaled_noise(x_off, length, y_off, length, noise_type, 0.0, scale);
+    let noise =
+        simdnoise::get_2d_scaled_noise(x_off, length, y_off, length, noise_type, 0.0, scale);
 
     let mut vertices = vec![];
-    let mut normals =  vec![];
-    let mut indices =  vec![];
+    let mut normals = vec![];
+    let mut indices = vec![];
 
     // iterates over every point, generates a vertex and a default normal
-    for i in 0..range {
-        vertices.push(Vertex { pos:    [(i / length) as f32, noise[i], (i % length) as f32]});
-        normals.push( Normal { normal: [0.0,                 0.0,      0.0                ]});
-    };
+    for (i, noise_y) in noise.iter().enumerate().take(range) {
+        vertices.push(Vertex {
+            pos: [(i / length) as f32, *noise_y, (i % length) as f32],
+        });
+        normals.push(Normal {
+            normal: [0.0, 0.0, 0.0],
+        });
+    }
 
     // generate indices
     for i in 0..range - (length * 2 - 1) {
@@ -166,14 +165,14 @@ pub fn gen_terrain(queue: &Arc<Queue>, scale: f32, x_off: f32, y_off: f32, noise
         let z = i % (length - 1);
 
         // triangle 1
-        indices.push( (x      * length + z     ) as u16);
-        indices.push(((x      * length + z) + 1) as u16);
-        indices.push(((x + 1) * length + z     ) as u16);
+        indices.push((x * length + z) as u16);
+        indices.push(((x * length + z) + 1) as u16);
+        indices.push(((x + 1) * length + z) as u16);
 
         // triangle 2
-        indices.push(((x      * length + z) + 1) as u16);
-        indices.push(((x + 1) * length + z  + 1) as u16);
-        indices.push(((x + 1) * length + z     ) as u16);
+        indices.push(((x * length + z) + 1) as u16);
+        indices.push(((x + 1) * length + z + 1) as u16);
+        indices.push(((x + 1) * length + z) as u16);
     }
 
     // generate normals
@@ -181,7 +180,7 @@ pub fn gen_terrain(queue: &Arc<Queue>, scale: f32, x_off: f32, y_off: f32, noise
         // assuming vertices at points a, b, c
 
         // indices of the points
-        let index_a = indices[i * 3    ] as usize;
+        let index_a = indices[i * 3] as usize;
         let index_b = indices[i * 3 + 1] as usize;
         let index_c = indices[i * 3 + 2] as usize;
 
@@ -191,8 +190,7 @@ pub fn gen_terrain(queue: &Arc<Queue>, scale: f32, x_off: f32, y_off: f32, noise
         let vertex_c: Vec3 = vertices[index_c].pos.into();
 
         // magic https://computergraphics.stackexchange.com/questions/4031/programmatically-generating-vertex-normals
-        let normal = (vertex_b - vertex_a)
-            .cross(vertex_c - vertex_a);
+        let normal = (vertex_b - vertex_a).cross(vertex_c - vertex_a);
 
         // add the normal to the normals of the points
         graphics::add(&mut normals[index_a].normal, normal);
@@ -201,9 +199,9 @@ pub fn gen_terrain(queue: &Arc<Queue>, scale: f32, x_off: f32, y_off: f32, noise
     }
 
     // normalize every normal
-    for i in 0..range {
-        let normal: Vec3 = normals[i].normal.into();
-        normals[i].normal = normal.normalize().into()
+    for graphics_normal in normals.iter_mut().take(range) {
+        let normal: Vec3 = graphics_normal.normal.into();
+        graphics_normal.normal = normal.normalize().into();
     }
 
     let result = Object::Custom(ModelBuffers {

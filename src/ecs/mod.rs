@@ -1,13 +1,13 @@
 pub mod components;
+pub mod entities;
 pub mod resources;
 pub mod systems;
-pub mod entities;
 
 use self::components::*;
 //use self::systems::*;
 
-use ::specs::World;
-use ::std::collections::HashMap;
+use specs::World;
+use std::collections::HashMap;
 
 pub fn init() -> World {
     let mut world = World::new();

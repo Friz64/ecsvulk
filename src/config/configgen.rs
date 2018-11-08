@@ -7,7 +7,7 @@ macro_rules! gen_config {
             fn update_scroll(&mut self, _: f32);
             fn update_status(&mut self);
         }
-        
+
         impl UpdateConfigHack for f32 {
             fn update_key(&mut self, _: Option<VirtualKeyCode>, _: ElementState) {}
             fn update_mouse(&mut self, _: MouseButton, _: ElementState) {}
@@ -21,7 +21,7 @@ macro_rules! gen_config {
             fn update_scroll(&mut self, _: f32) {}
             fn update_status(&mut self) {}
         }
-        
+
         mod option {
             use super::*;
 
@@ -50,7 +50,7 @@ macro_rules! gen_config {
                     }
                 }
             }
-            
+
             $(
                 #[derive(Debug, Deserialize, Serialize)]
                 #[allow(non_snake_case)]
@@ -92,7 +92,7 @@ macro_rules! gen_config {
                         }
                     }
                 )*
-            )* 
+            )*
 
             pub fn new(config_path: &str) -> Config {
                 use std::io::{Read, Seek};
@@ -159,7 +159,7 @@ macro_rules! gen_config {
                 pub $main_name_short: $main_name,
             )*
         }
-        
+
         $(
             #[derive(Debug)]
             #[allow(non_snake_case)]
@@ -198,7 +198,7 @@ macro_rules! gen_config {
                     self.$main_name_short.$sub_name_short.$field_name.update_mouse(button, state);
                 )*)*)*
             }
-            
+
             fn update_scroll(&mut self, delta: f32) {
                 $($($(
                     self.$main_name_short.$sub_name_short.$field_name.update_scroll(delta);

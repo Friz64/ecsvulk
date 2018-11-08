@@ -1,11 +1,8 @@
-use ::specs::{
-    prelude::*,
-    storage::{HashMapStorage},
-};
-use ::graphics::Vec3;
-use ::objects::Object;
-use ::renderer::pipelines;
-use ::nphysics3d::object::BodyHandle;
+use graphics::Vec3;
+use nphysics3d::object::BodyHandle;
+use objects::Object;
+use renderer::pipelines;
+use specs::{prelude::*, storage::HashMapStorage};
 
 pub struct Pos(pub Vec3);
 impl Component for Pos {

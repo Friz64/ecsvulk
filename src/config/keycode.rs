@@ -1,6 +1,4 @@
-use ::winit::{
-    VirtualKeyCode, MouseButton, ElementState,
-};
+use winit::{ElementState, MouseButton, VirtualKeyCode};
 
 #[derive(Debug)]
 pub struct Input {
@@ -51,7 +49,9 @@ impl Input {
     pub fn update_key(&mut self, keycode: Option<VirtualKeyCode>, state: ElementState) {
         let matches = if let InputType::Key(key) = self.input {
             Some(key) == keycode
-        } else { false };
+        } else {
+            false
+        };
 
         if matches {
             self.active = match state {
@@ -73,11 +73,13 @@ impl Input {
     }
 
     pub fn update_scroll(&mut self, delta: f32) {
-        if delta > 0.0 && self.input == InputType::ScrollUp {
+        if (delta > 0.0 && self.input == InputType::ScrollUp)
+            || (delta < 0.0 && self.input == InputType::ScrollDown)
+        {
             self.active = true;
-        } else if delta < 0.0 && self.input == InputType::ScrollDown {
-            self.active = true;
-        } else if delta == 0.0 && (self.input == InputType::ScrollUp || self.input == InputType::ScrollDown) {
+        } else if delta == 0.0
+            && (self.input == InputType::ScrollUp || self.input == InputType::ScrollDown)
+        {
             self.active = false;
         };
     }
@@ -89,13 +91,25 @@ impl Input {
         // up and not pressed => none; else down
 
         match self.status {
-            InputStatus::None => if  self.active { self.status = InputStatus::Down },
-            InputStatus::Down => if  self.active { self.status = InputStatus::Hold } else { self.status = InputStatus::None },
-            InputStatus::Hold => if !self.active { self.status = InputStatus::Up   },
-            InputStatus::Up =>   if !self.active { self.status = InputStatus::None } else { self.status = InputStatus::Down },
+            InputStatus::None => if self.active {
+                self.status = InputStatus::Down
+            },
+            InputStatus::Down => if self.active {
+                self.status = InputStatus::Hold
+            } else {
+                self.status = InputStatus::None
+            },
+            InputStatus::Hold => if !self.active {
+                self.status = InputStatus::Up
+            },
+            InputStatus::Up => if !self.active {
+                self.status = InputStatus::None
+            } else {
+                self.status = InputStatus::Down
+            },
         };
     }
-    
+
     /*
     python 3
 
@@ -118,7 +132,8 @@ impl Input {
             default.to_owned()
         });
 
-        let mut input_type = match &*input.to_lowercase() { // im sorry
+        let mut input_type = match &*input.to_lowercase() {
+            // im sorry
             "mouse_left" => InputType::MouseKey(MouseButton::Left),
             "mouse_right" => InputType::MouseKey(MouseButton::Right),
             "mouse_middle" => InputType::MouseKey(MouseButton::Middle),
@@ -280,11 +295,15 @@ impl Input {
         };
 
         if input_type == InputType::None {
-            ::warn!("{} - \"{}\" isn't recognized, using default", location, input);
+            ::warn!(
+                "{} - \"{}\" isn't recognized, using default",
+                location,
+                input
+            );
 
             input_type = Self::from_str(Some(default.to_owned()), location, default).input;
         }
-        
+
         Input {
             input: input_type,
             source_string: input,

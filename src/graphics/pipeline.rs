@@ -51,7 +51,7 @@ macro_rules! gen_pipelines {
                 #[derive(VulkanoShader)]
                 #[ty = "vertex"]
                 #[path = $vert_src]
-                struct _Shdr; 
+                struct _Shdr;
             }
             pub mod fs {
                 #[derive(VulkanoShader)]
@@ -96,14 +96,14 @@ macro_rules! gen_pipelines {
                     if settings.wireframe {
                         pipeline = pipeline.polygon_mode_line();
                     }
-                    
+
                     let pipeline = Arc::new(pipeline
                         .render_pass(Subpass::from(render_pass.clone(), 0)
                             .unwrap_or_else(|| ::error_close!("Failed to create Subpass")))
                         .build(device.clone())
                             .unwrap_or_else(|err| ::error_close!("{}", err))
                     );
-                    
+
                     let cbp = CpuBufferPool::new(device.clone(), BufferUsage::all());
                     let sets_pool: FixedSizeDescriptorSetsPool<
                         Arc<GraphicsPipelineAbstract + Send + Sync>

@@ -1,15 +1,11 @@
+use super::keycode::Input;
+use log::warn;
 use std::{
     fs::{File, OpenOptions},
     io::{self, SeekFrom, Write},
 };
-use super::keycode::{
-    Input
-};
-use ::toml;
-use ::winit::{
-    VirtualKeyCode, ElementState, MouseButton,
-};
-use log::warn;
+use toml;
+use winit::{ElementState, MouseButton, VirtualKeyCode};
 
 gen_config! {
     ConfigControls controls {
@@ -40,47 +36,38 @@ gen_config! {
     }
 }
 
-
 impl Config {
     pub fn new(confpath: &str) -> Self {
         let config = option::new(confpath);
 
         // TODO: marker for config change
-        let config_controls = config.controls
-            .unwrap_or_else(|| {
-                warn!("config.controls is invalid, using default");
-                Default::default()
-            });
+        let config_controls = config.controls.unwrap_or_else(|| {
+            warn!("config.controls is invalid, using default");
+            Default::default()
+        });
 
-        let config_controls_movement = config_controls.movement
-            .unwrap_or_else(|| {
-                warn!("config.controls.movement is invalid, using default");
-                Default::default()
-            });
-        let config_controls_sensitivity = config_controls.sensitivity
-            .unwrap_or_else(|| {
-                warn!("config.controls.sensitivity is invalid, using default");
-                Default::default()
-            });
-        let config_controls_engine = config_controls.engine
-            .unwrap_or_else(|| {
-                warn!("config.controls.engine is invalid, using default");
-                Default::default()
-            });
+        let config_controls_movement = config_controls.movement.unwrap_or_else(|| {
+            warn!("config.controls.movement is invalid, using default");
+            Default::default()
+        });
+        let config_controls_sensitivity = config_controls.sensitivity.unwrap_or_else(|| {
+            warn!("config.controls.sensitivity is invalid, using default");
+            Default::default()
+        });
+        let config_controls_engine = config_controls.engine.unwrap_or_else(|| {
+            warn!("config.controls.engine is invalid, using default");
+            Default::default()
+        });
 
+        let config_graphics = config.graphics.unwrap_or_else(|| {
+            warn!("config.graphics is invalid, using default");
+            Default::default()
+        });
 
-
-        let config_graphics = config.graphics
-            .unwrap_or_else(|| {
-                warn!("config.graphics is invalid, using default");
-                Default::default()
-            });
-
-        let config_graphics_settings = config_graphics.settings
-            .unwrap_or_else(|| {
-                warn!("config.graphics.settings is invalid, using default");
-                Default::default()
-            });
+        let config_graphics_settings = config_graphics.settings.unwrap_or_else(|| {
+            warn!("config.graphics.settings is invalid, using default");
+            Default::default()
+        });
 
         // TODO: marker for config change
         let result = Config {
@@ -171,21 +158,21 @@ impl Config {
                 }),
             }),
         };
-        let serialized = toml::to_string(&reconstructed)
-            .unwrap_or_else(|err| {
-                warn!("{}", err);
-                String::new()
-            });
-        
+        let serialized = toml::to_string(&reconstructed).unwrap_or_else(|err| {
+            warn!("{}", err);
+            String::new()
+        });
+
         let mut file = OpenOptions::new()
-            .write(true).open(&path)
+            .write(true)
+            .open(&path)
             .unwrap_or_else(|err| ::error_close!("{}", err));
 
         // delete everything in file
         file.set_len(0)
             .unwrap_or_else(|err| ::error_close!("{}", err));
 
-        file.write(serialized.as_bytes())
+        file.write_all(serialized.as_bytes())
             .unwrap_or_else(|err| ::error_close!("{}", err));
     }
 }
