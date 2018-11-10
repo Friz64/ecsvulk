@@ -96,6 +96,16 @@ fn main() {
         0.0,
         0.0,
         0.0,
+    );    
+
+    entities::create_obj(
+        &mut ecs,
+        Pipeline::normal,
+        Object::suzanne,
+        Vec3::new(20.0, 8.0, 125.0),
+        0.0,
+        -90.0,
+        0.0,
     );
 
     //entities::create_obj(&mut ecs, Pipeline::normal, Object::suzanne, Vec3::new(0.0, 5.0, 0.0), 0.0, 0.0, 0.0);

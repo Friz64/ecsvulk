@@ -1,4 +1,5 @@
 /target
-/Game
+/Game/config.toml
+/Game/Game.log
 **/*.rs.bk
 .vscode/tasks.json

@@ -27,7 +27,7 @@ macro_rules! gen_objects {
             pub fn load(queue: &Arc<Queue>) -> Self {
                 let objs = Self {
                     $(
-                        $name: load_obj(logger, queue, stringify!($name)).unwrap_or_default(),
+                        $name: load_obj(queue, stringify!($name)).unwrap_or_default(),
                     )*
                 };
 
@@ -129,7 +129,7 @@ fn load_obj(queue: &Arc<Queue>, name: &str) -> Option<ModelBuffers> {
 }
 
 // actually does the work, specify the objs here
-gen_objects!(/*teapot, suzanne*/);
+gen_objects!(suzanne);
 
 pub fn gen_terrain(
     queue: &Arc<Queue>,
