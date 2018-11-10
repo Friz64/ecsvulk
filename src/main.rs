@@ -18,6 +18,7 @@ extern crate obj;
 extern crate rayon;
 extern crate simdnoise;
 extern crate specs;
+extern crate sys_info;
 
 #[macro_use]
 mod helper;
@@ -68,7 +69,7 @@ fn main() {
         .unwrap_or_else(|err| error_close!("{}", err));
     let mut config = configloader::Config::new("config.toml");
     let mut events_loop = winit::EventsLoop::new();
-    let (mut renderer, _debug) = Renderer::new(&events_loop, &config);
+    let (mut renderer, _debug, device_name) = Renderer::new(&events_loop, &config);
     let objects = Objects::load(&renderer.queue);
     let mut ecs = ecs::init();
     let mut physics = create_physics();
@@ -116,6 +117,7 @@ fn main() {
     if DEBUG {
         warn!("This is a debug build, beware of any bugs or issues")
     }
+    log_system_info(device_name);
     info!("{} {} - Made by Friz64", NAME, VERSION);
 
     let mut old_frame = Instant::now();

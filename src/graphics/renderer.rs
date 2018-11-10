@@ -100,7 +100,7 @@ pub struct Renderer {
 }
 
 impl Renderer {
-    pub fn new(events_loop: &EventsLoop, config: &Config) -> (Self, Option<DebugCallback>) {
+    pub fn new(events_loop: &EventsLoop, config: &Config) -> (Self, Option<DebugCallback>, String) {
         let required_device_extensions = DeviceExtensions {
             khr_swapchain: true,
             ..DeviceExtensions::none()
@@ -111,7 +111,7 @@ impl Renderer {
 
         let surface = Self::surface(events_loop, &instance);
 
-        let (physical_device, queue_family) =
+        let (physical_device, queue_family, device_name) =
             Self::physical_device(&instance, &surface, required_device_extensions);
         let (device, queue) = Self::logical_device(
             &instance,
@@ -173,6 +173,7 @@ impl Renderer {
                 recreate_swap_chain: false,
             },
             debug_callback,
+            device_name,
         )
     }
 
@@ -235,8 +236,9 @@ impl Renderer {
         instance: &Arc<Instance>,
         surface: &Arc<Surface<Window>>,
         required_extensions: DeviceExtensions,
-    ) -> (usize, u32) {
+    ) -> (usize, u32, String) {
         let mut family = None;
+        let mut name = String::new();
 
         let device = PhysicalDevice::enumerate(&instance)
             .position(|device| {
@@ -245,6 +247,7 @@ impl Renderer {
                     .find(|&q| q.supports_graphics() && surface.is_supported(q).unwrap_or(false))
                     .map(Some)
                     .unwrap_or(None);
+                name = device.name();
 
                 let extensions_supported = DeviceExtensions::supported_by_device(device)
                     .intersection(&required_extensions)
@@ -271,7 +274,7 @@ impl Renderer {
             .unwrap_or_else(|| ::error_close!("No suitable QueueFamily found"))
             .id();
 
-        (device, family)
+        (device, family, name)
     }
 
     fn logical_device(

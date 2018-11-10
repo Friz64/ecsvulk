@@ -1,6 +1,7 @@
 // https://github.com/Friz64/ecsvulk/issues/2
-macro_rules! gen_config {
-    ( $( $main_name:ident $main_name_short:ident { $( $sub_name:ident $sub_name_short:ident { $( $field_name: ident $option_type:ident $real_type:ident $default:expr )* } ),* } ),* ) => (
+
+macro_rules! ignore {
+    ($($datatype:ident),*) => {
         trait UpdateConfigHack {
             fn update_key(&mut self, _: Option<VirtualKeyCode>, _: ElementState);
             fn update_mouse(&mut self, _: MouseButton, _: ElementState);
@@ -8,20 +9,23 @@ macro_rules! gen_config {
             fn update_status(&mut self);
         }
 
-        impl UpdateConfigHack for f32 {
-            fn update_key(&mut self, _: Option<VirtualKeyCode>, _: ElementState) {}
-            fn update_mouse(&mut self, _: MouseButton, _: ElementState) {}
-            fn update_scroll(&mut self, _: f32) {}
-            fn update_status(&mut self) {}
-        }
+        $(
+            impl UpdateConfigHack for $datatype {
+                #[inline(always)]
+                fn update_key(&mut self, _: Option<VirtualKeyCode>, _: ElementState) {}
+                #[inline(always)]
+                fn update_mouse(&mut self, _: MouseButton, _: ElementState) {}
+                #[inline(always)]
+                fn update_scroll(&mut self, _: f32) {}
+                #[inline(always)]
+                fn update_status(&mut self) {}
+            }
+        )*
+    }
+}
 
-        impl UpdateConfigHack for bool {
-            fn update_key(&mut self, _: Option<VirtualKeyCode>, _: ElementState) {}
-            fn update_mouse(&mut self, _: MouseButton, _: ElementState) {}
-            fn update_scroll(&mut self, _: f32) {}
-            fn update_status(&mut self) {}
-        }
-
+macro_rules! gen_config {
+    ( $( $main_name:ident $main_name_short:ident { $( $sub_name:ident $sub_name_short:ident { $( $field_name: ident $option_type:ident $real_type:ident $default:expr )* } ),* } ),* ) => (
         mod option {
             use super::*;
 
@@ -211,5 +215,8 @@ macro_rules! gen_config {
                 )*)*)*
             }
         }
+
+        // TODO: Marker for type impl
+        ignore!(f32, i32, String, bool);
     )
 }

@@ -22,6 +22,19 @@ pub fn init() {
     });
 }
 
+pub fn log_system_info(device_name: String) {
+    ::info!("System Information:");
+    ::info!("- Graphics Device: {}", device_name);
+
+    if let Ok(val) = sys_info::cpu_num() {
+        ::info!("- CPU Threads: {}", val);
+    };
+
+    if let Ok(val) = sys_info::mem_info() {
+        ::info!("- System RAM: {} GB", val.total as f32 / 1_000_000.0);
+    };
+}
+
 pub fn create_physics() -> World<f32> {
     let mut world = World::new();
 

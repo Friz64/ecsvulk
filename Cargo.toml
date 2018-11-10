@@ -22,3 +22,4 @@ ncollide3d = "0.17.1"
 nalgebra = "0.16.4"
 log = { version = "0.4.6", features = ["std"] }
 ansi_term = "0.11"
+sys-info = "0.5.6"
