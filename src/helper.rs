@@ -31,7 +31,7 @@ pub fn log_system_info(device_name: String) {
     };
 
     if let Ok(val) = sys_info::mem_info() {
-        ::info!("- System RAM: {} GB", val.total as f32 / 1_000_000.0);
+        ::info!("- System RAM: {} GB", val.total / 1_000_000);
     };
 }
 

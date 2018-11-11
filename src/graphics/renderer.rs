@@ -224,8 +224,12 @@ impl Renderer {
 
     fn surface(events_loop: &EventsLoop, instance: &Arc<Instance>) -> Arc<Surface<Window>> {
         WindowBuilder::new()
-            .with_title(::NAME.to_owned() + " " + &::VERSION.to_string())
-            .build_vk_surface(&events_loop, instance.clone())
+            .with_title(format!(
+                "{} {}{}",
+                ::NAME,
+                ::VERSION,
+                if ::DEBUG { " [Debug Build]" } else { "" }
+            )).build_vk_surface(&events_loop, instance.clone())
             .unwrap_or_else(|err| match err {
                 CreationError::SurfaceCreationError(err) => ::error_close!("{}", err),
                 CreationError::WindowCreationError(err) => ::error_close!("{}", err),

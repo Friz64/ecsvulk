@@ -10,6 +10,7 @@ extern crate vulkano;
 extern crate vulkano_shader_derive;
 extern crate ansi_term;
 extern crate cgmath;
+extern crate discord_rpc_client;
 extern crate log;
 extern crate nalgebra;
 extern crate ncollide3d;
@@ -25,11 +26,13 @@ mod helper;
 #[macro_use]
 mod logger;
 mod config;
+mod discordrpc;
 mod ecs;
 mod graphics;
 mod objects;
 
 use config::configloader::{self, UpdateConfig};
+use discordrpc::*;
 use ecs::{components::PitchYawRoll, entities};
 use graphics::{
     renderer::{pipelines::Pipeline, *},
@@ -73,6 +76,8 @@ fn main() {
     let objects = Objects::load(&renderer.queue);
     let mut ecs = ecs::init();
     let mut physics = create_physics();
+    let mut rpc = DiscordRPC::new(476458073049923586, 1);
+
     let player = entities::create_player(&mut ecs, Vec3::new(10.0, 10.0, 125.0), 0.0, 0.0);
 
     let terrain = objects::gen_terrain(
@@ -96,7 +101,7 @@ fn main() {
         0.0,
         0.0,
         0.0,
-    );    
+    );
 
     entities::create_obj(
         &mut ecs,
@@ -196,6 +201,17 @@ fn main() {
                 _ => (),
             },
             _ => (),
+        });
+
+        rpc.set_activity(|activity| {
+            activity.state("Flying around").assets(|assets| {
+                assets.large_image("terrain").large_text(format!(
+                    "{} {}{}",
+                    ::NAME,
+                    ::VERSION,
+                    if ::DEBUG { " [Debug Build]" } else { "" }
+                ))
+            })
         });
 
         // updates down, hold, up and none
