@@ -3,3 +3,4 @@
 /Game/Game.log
 **/*.rs.bk
 .vscode/tasks.json
+.vscode/settings.json
