@@ -365,11 +365,7 @@ impl Renderer {
             _ => PresentMode::Fifo, // requested, use it
         };
 
-        let dimensions = capabilities.current_extent.unwrap_or({
-            println!("current extent failed on create");
-            DEFAULT_DIMENSIONS
-        });;;;
-        ::debug!("create swapchain - {}x{}", dimensions[0], dimensions[1]);
+        let dimensions = capabilities.current_extent.unwrap_or(DEFAULT_DIMENSIONS);
 
         let image_count = {
             let mut count = capabilities.min_image_count + 1;
@@ -589,19 +585,15 @@ impl Renderer {
                 ::error_close!("Failed to reconstruct physical device from earlier obtained index")
             });
 
-        let dimensions = self
-            .surface
-            .capabilities(physical_device)
-            .unwrap_or_else(|err| match err {
-                CapabilitiesError::OomError(err) => ::error_close!("{}", err),
-                _ => ::error_close!("{}", err),
-            }).current_extent
-            .unwrap_or({
-                println!("current extent failed on recreate");
-                DEFAULT_DIMENSIONS
-            });
+        let capabilities =
+            self.surface
+                .capabilities(physical_device)
+                .unwrap_or_else(|err| match err {
+                    CapabilitiesError::OomError(err) => ::error_close!("{}", err),
+                    _ => ::error_close!("{}", err),
+                });
 
-        ::debug!("recreate swap chain - {}x{}", dimensions[0], dimensions[1]);
+        let dimensions = capabilities.current_extent.unwrap_or(DEFAULT_DIMENSIONS);
 
         let (swap_chain, swap_chain_images) =
             match self.swap_chain.recreate_with_dimension(dimensions) {
@@ -741,7 +733,7 @@ impl Renderer {
     ) -> bool {
         {
             let sucess = {
-                // windows resizes window to 0, 0 upon minimizing
+                // windows resizes window to 0, 0 upon minimizing on windows
                 let dimensions: (u32, u32) = self
                     .surface
                     .window()
