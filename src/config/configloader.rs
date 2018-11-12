@@ -29,9 +29,12 @@ gen_config! {
             wireframe String Input "f".to_uppercase()
         }
     },
-    ConfigGraphics graphics {
-        ConfigGraphicsSettings settings {
+    ConfigSettings settings {
+        ConfigSettingsGraphics graphics {
             vsync bool bool true
+        },
+        ConfigSettingsDiscord discord {
+            active bool bool true
         }
     }
 }
@@ -59,13 +62,17 @@ impl Config {
             Default::default()
         });
 
-        let config_graphics = config.graphics.unwrap_or_else(|| {
-            warn!("config.graphics is invalid, using default");
+        let config_settings = config.settings.unwrap_or_else(|| {
+            warn!("config.settings is invalid, using default");
             Default::default()
         });
 
-        let config_graphics_settings = config_graphics.settings.unwrap_or_else(|| {
-            warn!("config.graphics.settings is invalid, using default");
+        let config_settings_graphics = config_settings.graphics.unwrap_or_else(|| {
+            warn!("config.settings.graphics is invalid, using default");
+            Default::default()
+        });
+        let config_settings_discord = config_settings.discord.unwrap_or_else(|| {
+            warn!("config.settings.discord is invalid, using default");
             Default::default()
         });
 
@@ -111,10 +118,16 @@ impl Config {
                     wireframe: Input::from_str(config_controls_engine.wireframe, "config.controls.engine.wireframe", "f"),
                 },
             },
-            graphics: ConfigGraphics {
-                settings: ConfigGraphicsSettings {
-                    vsync: config_graphics_settings.vsync.unwrap_or_else(|| {
+            settings: ConfigSettings {
+                graphics: ConfigSettingsGraphics {
+                    vsync: config_settings_graphics.vsync.unwrap_or_else(|| {
                         warn!("config.graphics.settings.vsync is invalid, using default");
+                        true
+                    }),
+                },
+                discord: ConfigSettingsDiscord {
+                    active: config_settings_discord.active.unwrap_or_else(|| {
+                        warn!("config.settings.discord.active is invalid, using default");
                         true
                     }),
                 }
@@ -152,9 +165,12 @@ impl Config {
                     wireframe: Some(self.controls.engine.wireframe.to_string()),
                 }),
             }),
-            graphics: Some(option::ConfigGraphics {
-                settings: Some(option::ConfigGraphicsSettings {
-                    vsync: Some(self.graphics.settings.vsync),
+            settings: Some(option::ConfigSettings {
+                graphics: Some(option::ConfigSettingsGraphics {
+                    vsync: Some(self.settings.graphics.vsync),
+                }),
+                discord: Some(option::ConfigSettingsDiscord {
+                    active: Some(self.settings.discord.active),
                 }),
             }),
         };

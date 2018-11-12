@@ -39,7 +39,7 @@ use graphics::{
     *,
 };
 use helper::*;
-use log::{info, warn};
+use log::{debug, info, warn};
 use logger::*;
 use objects::*;
 use rayon::ThreadPoolBuilder;
@@ -76,7 +76,7 @@ fn main() {
     let objects = Objects::load(&renderer.queue);
     let mut ecs = ecs::init();
     let mut physics = create_physics();
-    let mut rpc = DiscordRPC::new(476458073049923586, 1);
+    let mut rpc = DiscordRPC::new(&config, 476458073049923586, 1);
 
     let player = entities::create_player(&mut ecs, Vec3::new(10.0, 10.0, 125.0), 0.0, 0.0);
 
@@ -197,6 +197,9 @@ fn main() {
                         // locks looking down
                         player_pyr.0 = -max_pitch;
                     }
+                }
+                DeviceEvent::Text { codepoint } => {
+                    println!("received {}", codepoint);
                 }
                 _ => (),
             },

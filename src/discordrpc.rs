@@ -1,3 +1,4 @@
+use config::configloader::Config;
 use discord_rpc_client::{models::rich_presence::Activity, Client};
 use std::time::Instant;
 
@@ -8,18 +9,22 @@ pub struct DiscordRPC {
 }
 
 impl DiscordRPC {
-    pub fn new(client_id: u64, updatefreq: u64) -> Self {
-        let rpc = match Client::new(client_id) {
-            Ok(mut rpc) => {
-                rpc.start();
+    pub fn new(config: &Config, client_id: u64, updatefreq: u64) -> Self {
+        let rpc = if config.settings.discord.active {
+            match Client::new(client_id) {
+                Ok(mut rpc) => {
+                    rpc.start();
 
-                Some(rpc)
-            }
-            Err(err) => {
-                ::warn!("Failed to start DiscordRPC - {}", err);
+                    Some(rpc)
+                }
+                Err(err) => {
+                    ::warn!("Failed to start DiscordRPC - {}", err);
 
-                None
+                    None
+                }
             }
+        } else {
+            None
         };
 
         let last_update = Instant::now();
@@ -32,8 +37,8 @@ impl DiscordRPC {
     }
 
     pub fn set_activity(&mut self, activity: impl FnOnce(Activity) -> Activity) {
-        if let Some(ref mut rpc) = self.rpc {
-            if self.last_update.elapsed().as_secs() > self.updatefreq {
+        if self.last_update.elapsed().as_secs() > self.updatefreq {
+            if let Some(ref mut rpc) = self.rpc {
                 if let Err(err) = rpc.set_activity(activity) {
                     ::warn!("Failed to set activity - {}", err);
                 }

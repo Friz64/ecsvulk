@@ -44,6 +44,8 @@ use vulkano::{
 use vulkano_win::{self, CreationError, VkSurfaceBuild};
 use winit::{EventsLoop, Window, WindowBuilder};
 
+const DEFAULT_DIMENSIONS: [u32; 2] = [800, 600];
+
 pub mod pipelines {
     use super::*;
 
@@ -229,7 +231,8 @@ impl Renderer {
                 ::NAME,
                 ::VERSION,
                 if ::DEBUG { " [Debug Build]" } else { "" }
-            )).build_vk_surface(&events_loop, instance.clone())
+            )).with_dimensions((DEFAULT_DIMENSIONS[0], DEFAULT_DIMENSIONS[1]).into())
+            .build_vk_surface(&events_loop, instance.clone())
             .unwrap_or_else(|err| match err {
                 CreationError::SurfaceCreationError(err) => ::error_close!("{}", err),
                 CreationError::WindowCreationError(err) => ::error_close!("{}", err),
@@ -352,7 +355,7 @@ impl Renderer {
         };
 
         // https://docs.rs/vulkano/0.10.0/vulkano/swapchain/enum.PresentMode.html
-        let present_mode = match config.graphics.settings.vsync {
+        let present_mode = match config.settings.graphics.vsync {
             // fifo is always supported
             false if capabilities.present_modes.immediate => PresentMode::Immediate, // vsync not requested, capable of immediate
             true if !capabilities.present_modes.immediate => {
@@ -362,7 +365,11 @@ impl Renderer {
             _ => PresentMode::Fifo, // requested, use it
         };
 
-        let dimensions = capabilities.current_extent.unwrap_or([800, 600]);
+        let dimensions = capabilities.current_extent.unwrap_or({
+            println!("current extent failed on create");
+            DEFAULT_DIMENSIONS
+        });;;;
+        ::debug!("create swapchain - {}x{}", dimensions[0], dimensions[1]);
 
         let image_count = {
             let mut count = capabilities.min_image_count + 1;
@@ -589,7 +596,12 @@ impl Renderer {
                 CapabilitiesError::OomError(err) => ::error_close!("{}", err),
                 _ => ::error_close!("{}", err),
             }).current_extent
-            .unwrap_or([800, 600]);
+            .unwrap_or({
+                println!("current extent failed on recreate");
+                DEFAULT_DIMENSIONS
+            });
+
+        ::debug!("recreate swap chain - {}x{}", dimensions[0], dimensions[1]);
 
         let (swap_chain, swap_chain_images) =
             match self.swap_chain.recreate_with_dimension(dimensions) {
